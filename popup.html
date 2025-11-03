@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auto Next Page Reader</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h2>
+      <i>📖</i>
+  Auto Next Page Reader
+    </h2>
+  </header>
+
+  <main class="popup-container">
+    <button id="start" class="control-btn primary">
+      <i>▶</i>
+      Start Reading
+    </button>
+
+    <button id="stop" class="control-btn danger" disabled>
+      <i>⏹</i>
+      Stop
+    </button>
+
+    <button id="forward" class="control-btn toggle" disabled>
+      <i>⏩</i>
+      Skip Forward
+    </button>
+
+    <button id="toggle" class="control-btn toggle">
+      <i>↪</i>
+      Auto Next ON
+    </button>
+
+    <button id="toggleAutoRead" class="control-btn toggle">
+      <i>🗣</i>
+      Auto Read ON
+    </button>
+
+    <section class="tts-controls">
+      <div class="control-row">
+        <label for="rate">Rate</label>
+        <input id="rate" type="range" min="0.5" max="1.5" step="0.1" value="0.8" />
+        <span id="rateVal">0.8</span>
+      </div>
+      <div class="control-row">
+        <label for="pitch">Pitch</label>
+        <input id="pitch" type="range" min="0.5" max="2" step="0.1" value="1.0" />
+        <span id="pitchVal">1.0</span>
+      </div>
+      <div class="control-row">
+        <label>
+          <input id="autoLang" type="checkbox" checked /> Auto-detect language
+        </label>
+      </div>
+    </section>
+
+    <button id="settings" class="control-btn important">
+      <i>⚙</i>
+      Important Settings
+    </button>
+
+    <button id="support" class="control-btn important">
+      <i>❤</i>
+      Support Development
+    </button>
+
+    <div class="status-container">
+      <div id="status" class="status-message">Ready to start...</div>
+    </div>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

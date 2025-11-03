@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auto Next Page Reader • Guide</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.5; color: #222; }
+    h1 { margin-top: 0; }
+    code, kbd { background: #f3f3f3; padding: 2px 6px; border-radius: 4px; }
+    .tip { background: #fff9e6; border: 1px solid #ffe58f; padding: 12px; border-radius: 6px; }
+    ul { padding-left: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Auto Next Page Reader — Important setup</h1>
+  <p>
+    This extension reads article content aloud and tries to navigate to the next chapter automatically.
+  </p>
+  <div class="tip">
+    <strong>Tips</strong>
+    <ul>
+      <li>Use <kbd>Ctrl</kbd> + <kbd>`</kbd> to pause/resume while a page is being read.</li>
+      <li>If auto-next fails, try sites that use a <code>rel="next"</code> link or URLs with <code>chapter-123</code> patterns.</li>
+      <li>Keep the tab active while reading for the most reliable speech output.</li>
+    </ul>
+  </div>
+  <h2>Buttons</h2>
+  <ul>
+    <li><strong>Start Reading</strong> — extracts the main content on the current page and starts text-to-speech.</li>
+    <li><strong>Stop</strong> — stops the current speech immediately.</li>
+    <li><strong>Skip Forward</strong> — jumps ahead in the current article.</li>
+    <li><strong>Auto Next</strong> — when ON, after finishing a chapter the extension tries to open the next one.</li>
+    <li><strong>Auto Read</strong> — when ON, it starts reading automatically after a page loads.</li>
+  </ul>
+  <h2>Privacy & permissions</h2>
+  <p>
+    The extension runs its content script on pages you visit to extract readable text and control speech.
+    No data is sent off your device.
+  </p>
+</body>
+</html>

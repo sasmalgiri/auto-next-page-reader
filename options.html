@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auto Next Page Reader • Options</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #222; }
+    h1 { margin-top: 0; }
+    label { display: block; margin-top: 12px; }
+    input[type="text"] { width: 100%; padding: 8px; font-size: 14px; }
+    .row { margin: 12px 0; }
+    .actions { margin-top: 16px; }
+    button { padding: 8px 12px; font-size: 14px; }
+    .hint { color: #666; font-size: 12px; }
+    .ok { color: #0a7c2f; }
+    .err { color: #9e1b1b; }
+  </style>
+</head>
+<body>
+  <h1>Options</h1>
+  <p>Configure your support link for Buy Me a Coffee, Ko‑fi, or a custom donation page.</p>
+
+  <div class="row">
+    <label for="supportUrl">Support URL</label>
+  <input id="supportUrl" type="text" placeholder="https://buymeacoffee.com/sasmalgiric" />
+  <div id="supportHint" class="hint">Example: https://buymeacoffee.com/sasmalgiric</div>
+  </div>
+
+  <div class="actions">
+    <button id="save">Save</button>
+    <span id="status" class="hint"></span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

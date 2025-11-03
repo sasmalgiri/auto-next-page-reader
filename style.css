@@ -1,0 +1,132 @@
+/* Base Styles */
+body {
+  font-family: 'Roboto Mono', monospace;
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, #3b3f51, #515774); /* Mid deep gradient background */
+  color: #ececec; /* Light text for good contrast on a deep background */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 250px; /* Half of the original width (300px) */
+  min-height: 250px; /* Half of the original min-height (300px) */
+}
+
+/* Header */
+header {
+  background: linear-gradient(90deg, #2d2f3f, #3c4560); /* Darker gradient for the header */
+  color: #f1f1f1;
+  padding: 8px; /* Half of the original padding (10px) */
+  width: 100%;
+  text-align: center;
+  border-bottom: 1px solid #1f2533; /* Dark border for subtle separation */
+}
+
+h2 {
+  margin: 0;
+  font-size: 0.9rem; /* Reduced font size for compact UI */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+h2 i {
+  margin-right: 7px; /* Half of the original margin-right (8px) */
+}
+
+/* Main Popup Container */
+.popup-container {
+  padding: 8px; /* Half of the original padding (10px) */
+  text-align: center;
+}
+
+/* Control Buttons */
+.control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 70%; /* Reduced width for a compact layout */
+  padding: 7px; /* Reduced padding for compact buttons */
+  margin: 7px auto; /* Reduced margins between buttons */
+  font-size: 15px; /* Slightly larger font size for readability */
+  color: #ffffff;
+  border: none;
+  border-radius: 4px; /* Maintained a moderate border radius */
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.control-btn i {
+  margin-right: 7px; /* Reduced margin-right for compact layout */
+}
+
+/* Button Gradients */
+.primary {
+  background: linear-gradient(90deg, #0f9b0f, #076d07); /* Deep green gradient for primary actions */
+}
+
+.primary:hover {
+  background: linear-gradient(90deg, #076d07, #064b05);
+  box-shadow: 0 0 10px #064b05; /* Subtle glow effect on hover */
+}
+
+.danger {
+  background: linear-gradient(90deg, #a10d0d, #720808); /* Deep red gradient for stop action */
+}
+
+.danger:hover {
+  background: linear-gradient(90deg, #720808, #580606);
+  box-shadow: 0 0 10px #580606; /* Subtle glow effect on hover */
+}
+
+.toggle {
+  background: linear-gradient(90deg, #5c5c5c, #3e3e3e); /* Neutral dark gradient for toggle buttons */
+}
+
+.toggle:hover {
+  background: linear-gradient(90deg, #3e3e3e, #2b2b2b);
+  box-shadow: 0 0 10px #2b2b2b; /* Subtle glow effect on hover */
+}
+
+/* Style for the Important Setting Button */
+.important {
+  background: linear-gradient(90deg, #8b1e1e, #691515); /* Deep red gradient for urgency */
+  color: #fff;
+}
+
+.important:hover {
+  background: linear-gradient(90deg, #691515, #4d1010);
+  box-shadow: 0 0 10px #4d1010; /* Subtle glow effect on hover */
+}
+
+/* Disabled Button Styles */
+.control-btn[disabled] {
+  background: #555555; /* Deeper gray for a clear distinction */
+  cursor: not-allowed;
+}
+
+/* Status Message */
+.status-container {
+  margin-top: 8px; /* Reduced margin for compact UI */
+}
+
+.status-message {
+  font-style: italic;
+  color: #d3d3d3; /* Light gray for status message */
+  font-size: 10px; /* Reduced font size for compact UI */
+}
+
+/* TTS Controls */
+.tts-controls {
+  margin-top: 8px;
+  text-align: left;
+}
+.tts-controls .control-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 40px;
+  align-items: center;
+  column-gap: 8px;
+  margin: 6px 0;
+}
+.tts-controls label { font-size: 12px; color: #e5e5e5; }
+.tts-controls input[type="range"] { width: 100%; }
