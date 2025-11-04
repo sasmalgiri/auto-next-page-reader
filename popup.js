@@ -5,6 +5,7 @@ let autoReadEnabled = true; // Default is ON
 let ttsRate = 0.8;
 let ttsPitch = 1.0;
 let ttsAutoLang = true;
+let autoScrollWhileReading = false;
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
@@ -25,14 +26,15 @@ document.getElementById('toggleAutoRead').addEventListener('click', async () => 
 
 // Restore state when popup is reopened
 document.addEventListener('DOMContentLoaded', async () => {
-  chrome.storage.local.get(['isSpeaking', 'autoNextEnabled', 'activeTabId', 'autoReadEnabled', 'ttsRate', 'ttsPitch', 'ttsAutoLang'], (data) => {
+  chrome.storage.local.get(['isSpeaking', 'autoNextEnabled', 'activeTabId', 'autoReadEnabled', 'ttsRate', 'ttsPitch', 'ttsAutoLang', 'autoScrollWhileReading'], (data) => {
     isSpeaking = data.isSpeaking || false;
     autoNextEnabled = data.autoNextEnabled ?? true;
     activeTabId = data.activeTabId || null;
     autoReadEnabled = data.autoReadEnabled ?? true;
     ttsRate = typeof data.ttsRate === 'number' ? data.ttsRate : 0.8;
     ttsPitch = typeof data.ttsPitch === 'number' ? data.ttsPitch : 1.0;
-    ttsAutoLang = typeof data.ttsAutoLang === 'boolean' ? data.ttsAutoLang : true;
+  ttsAutoLang = typeof data.ttsAutoLang === 'boolean' ? data.ttsAutoLang : true;
+  autoScrollWhileReading = typeof data.autoScrollWhileReading === 'boolean' ? data.autoScrollWhileReading : false;
 
     // Update UI based on the stored state
     if (isSpeaking) {
@@ -43,7 +45,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       toggleControls('stop');
     }
     document.getElementById('toggle').innerText = autoNextEnabled ? "Auto Next ON" : "Auto Next OFF";
-    document.getElementById('toggleAutoRead').innerText = autoReadEnabled ? "Auto Read ON" : "Auto Read OFF";
+  document.getElementById('toggleAutoRead').innerText = autoReadEnabled ? "Auto Read ON" : "Auto Read OFF";
+  const asEl = document.getElementById('toggleAutoScroll');
+  if (asEl) asEl.innerText = autoScrollWhileReading ? "Auto Scroll ON" : "Auto Scroll OFF";
 
     // Initialize TTS controls
     const rateEl = document.getElementById('rate');
@@ -135,9 +139,11 @@ document.getElementById('start').addEventListener('click', async () => {
       ttsRate = parseFloat(rateEl.value);
       ttsPitch = parseFloat(pitchEl.value);
       ttsAutoLang = !!autoLangEl.checked;
-      chrome.storage.local.set({ ttsRate, ttsPitch, ttsAutoLang });
+  chrome.storage.local.set({ ttsRate, ttsPitch, ttsAutoLang });
 
-      await sendMessageToTab('startSpeech', { rate: ttsRate, pitch: ttsPitch, autoLang: ttsAutoLang });
+  // Ensure current auto-scroll setting is applied first
+  await sendMessageToTab('toggleAutoScroll', { autoScrollWhileReading });
+  await sendMessageToTab('startSpeech', { rate: ttsRate, pitch: ttsPitch, autoLang: ttsAutoLang });
       updateStatus('Reading started...');
       isSpeaking = true;
       chrome.storage.local.set({ isSpeaking });
@@ -177,6 +183,20 @@ document.getElementById('toggle').addEventListener('click', async () => {
     updateStatus(`Auto Next is now ${status}.`);
   } catch (error) {
     console.error('Failed to toggle auto next:', error);
+  }
+});
+
+// Toggle auto-scroll while reading
+document.getElementById('toggleAutoScroll')?.addEventListener('click', async () => {
+  autoScrollWhileReading = !autoScrollWhileReading;
+  const status = autoScrollWhileReading ? "Auto Scroll ON" : "Auto Scroll OFF";
+  document.getElementById('toggleAutoScroll').innerText = status;
+  try {
+    await sendMessageToTab('toggleAutoScroll', { autoScrollWhileReading });
+    chrome.storage.local.set({ autoScrollWhileReading });
+    updateStatus(`Auto Scroll is now ${status}.`);
+  } catch (error) {
+    console.error('Failed to toggle auto scroll:', error);
   }
 });
 

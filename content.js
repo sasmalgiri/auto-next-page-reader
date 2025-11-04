@@ -38,6 +38,12 @@ if (typeof ttsPitch === 'undefined') {
 if (typeof ttsAutoLang === 'undefined') {
   var ttsAutoLang = true;
 }
+if (typeof autoScrollWhileReading === 'undefined') {
+  var autoScrollWhileReading = false; // Optional continuous auto-scroll while speaking
+}
+if (typeof __autoScrollRAF === 'undefined') {
+  var __autoScrollRAF = null; // rAF id for auto-scroll loop
+}
 
 if (typeof userStoppedReading === 'undefined') {
   var userStoppedReading = false; // Track if the user manually stopped reading
@@ -85,12 +91,15 @@ if (!window.__AutoNextReaderInitialized) {
 
   // Load persisted toggles so behavior is consistent across pages
   try {
-    chrome.storage?.local.get(['autoNextEnabled', 'autoReadEnabled'], (data) => {
+    chrome.storage?.local.get(['autoNextEnabled', 'autoReadEnabled', 'autoScrollWhileReading'], (data) => {
       if (typeof data.autoNextEnabled === 'boolean') {
         autoNextEnabled = data.autoNextEnabled;
       }
       if (typeof data.autoReadEnabled === 'boolean') {
         autoReadEnabled = data.autoReadEnabled;
+      }
+      if (typeof data.autoScrollWhileReading === 'boolean') {
+        autoScrollWhileReading = data.autoScrollWhileReading;
       }
     });
     chrome.storage?.local.get(['ttsRate', 'ttsPitch', 'ttsAutoLang'], (data) => {
@@ -334,6 +343,7 @@ function startSpeech(text, rate = null, pitch = null, opts = {}) {
     utterance.onend = () => {
       if (!userStoppedReading) {
         isReading = false; // Update the status to not reading
+        stopAutoScroll();
         if (autoNextEnabled) {
           console.log("Chapter reading complete. Proceeding to the next chapter...");
           tryNextChapter(); // Try to reach the next chapter
@@ -359,6 +369,7 @@ function startSpeech(text, rate = null, pitch = null, opts = {}) {
     window.speechSynthesis.speak(utterance);
     isReading = true; // Update the status to reading
     userStoppedReading = false; // Reset the user stopped flag
+    if (autoScrollWhileReading) startAutoScroll();
   } catch (error) {
     console.error('Error during speech synthesis:', error);
   }
@@ -381,10 +392,34 @@ function stopSpeech() {
       userStoppedReading = true; // Set the flag to indicate user stopped the reading
       window.speechSynthesis.cancel(); // Stop any ongoing speech
       isReading = false; // Update the status to not reading
+      stopAutoScroll();
       console.log("User stopped the reading. Auto-next will not proceed.");
     }
   } catch (error) {
     console.error("Error while stopping speech synthesis:", error);
+  }
+}
+
+// Auto-scroll loop to support infinite/lazy loading while reading
+function startAutoScroll() {
+  if (__autoScrollRAF) return; // already running
+  const speedPxPerSec = 40; // gentle speed
+  let lastTs = performance.now();
+  const loop = (ts) => {
+    if (!isReading) { __autoScrollRAF = null; return; }
+    const dt = Math.max(0, Math.min(100, ts - lastTs));
+    lastTs = ts;
+    const dy = (speedPxPerSec * dt) / 1000;
+    window.scrollBy(0, dy);
+    __autoScrollRAF = requestAnimationFrame(loop);
+  };
+  __autoScrollRAF = requestAnimationFrame(loop);
+}
+
+function stopAutoScroll() {
+  if (__autoScrollRAF) {
+    cancelAnimationFrame(__autoScrollRAF);
+    __autoScrollRAF = null;
   }
 }
 
@@ -586,6 +621,13 @@ if (!window.__AutoNextReaderMsgBound) {
       } else if (message.action === 'toggleAutoRead') {
         autoReadEnabled = message.autoReadEnabled;
         sendResponse({ autoReadEnabled });
+      } else if (message.action === 'toggleAutoScroll') {
+        autoScrollWhileReading = !!message.autoScrollWhileReading;
+        try { chrome.storage?.local.set({ autoScrollWhileReading }); } catch {}
+        if (isReading) {
+          if (autoScrollWhileReading) startAutoScroll(); else stopAutoScroll();
+        }
+        sendResponse({ autoScrollWhileReading });
       } else if (message.action === 'startSpeech') {
         (async () => {
           const text = await waitForReadableContent(3500);
@@ -641,6 +683,9 @@ function buildOverlay() {
       <button id="anpr_toggle_next" style="flex:1 1 50%;background:#ffffff26;color:#fff;border:none;border-radius:8px;padding:6px 8px;cursor:pointer;">Auto Next: ON</button>
       <button id="anpr_toggle_read" style="flex:1 1 50%;background:#ffffff26;color:#fff;border:none;border-radius:8px;padding:6px 8px;cursor:pointer;">Auto Read: ON</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <button id="anpr_toggle_scroll" style="flex:1 1 100%;background:#ffffff26;color:#fff;border:none;border-radius:8px;padding:6px 8px;cursor:pointer;">Auto Scroll: OFF</button>
+    </div>
     <div style="background:#ffffff1a;border-radius:8px;padding:8px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <label style="min-width:36px">Rate</label>
@@ -666,6 +711,7 @@ function buildOverlay() {
   const btnClose = qs('#anpr_close');
   const btnNext = qs('#anpr_toggle_next');
   const btnRead = qs('#anpr_toggle_read');
+  const btnScroll = qs('#anpr_toggle_scroll');
   const rateEl = qs('#anpr_rate');
   const pitchEl = qs('#anpr_pitch');
   const rateVal = qs('#anpr_rate_val');
@@ -675,6 +721,7 @@ function buildOverlay() {
   // Initialize UI from current state
   btnNext.textContent = `Auto Next: ${autoNextEnabled ? 'ON' : 'OFF'}`;
   btnRead.textContent = `Auto Read: ${autoReadEnabled ? 'ON' : 'OFF'}`;
+  btnScroll.textContent = `Auto Scroll: ${autoScrollWhileReading ? 'ON' : 'OFF'}`;
   rateEl.value = String(ttsRate);
   pitchEl.value = String(ttsPitch);
   rateVal.textContent = String(ttsRate);
@@ -700,6 +747,12 @@ function buildOverlay() {
   btnClose.onclick = () => toggleOverlay(false);
   btnNext.onclick = () => { autoNextEnabled = !autoNextEnabled; btnNext.textContent = `Auto Next: ${autoNextEnabled ? 'ON' : 'OFF'}`; try{chrome.storage?.local.set({autoNextEnabled});}catch{} };
   btnRead.onclick = () => { autoReadEnabled = !autoReadEnabled; btnRead.textContent = `Auto Read: ${autoReadEnabled ? 'ON' : 'OFF'}`; try{chrome.storage?.local.set({autoReadEnabled});}catch{} };
+  btnScroll.onclick = () => {
+    autoScrollWhileReading = !autoScrollWhileReading;
+    btnScroll.textContent = `Auto Scroll: ${autoScrollWhileReading ? 'ON' : 'OFF'}`;
+    try { chrome.storage?.local.set({ autoScrollWhileReading }); } catch {}
+    if (isReading) { if (autoScrollWhileReading) startAutoScroll(); else stopAutoScroll(); }
+  };
   rateEl.oninput = () => { rateVal.textContent = String(parseFloat(rateEl.value)); };
   rateEl.onchange = () => { ttsRate = parseFloat(rateEl.value); try{chrome.storage?.local.set({ttsRate});}catch{} };
   pitchEl.oninput = () => { pitchVal.textContent = String(parseFloat(pitchEl.value)); };
