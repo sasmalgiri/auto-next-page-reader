@@ -7,17 +7,18 @@ Goal: Capture a clean demo video for the store and README.
 - Toggle “Allow access to file URLs” for this extension (so it can run on local demo pages).
 - Open `store-assets/demo/demo1.html` in Chrome (right‑click → Copy path, paste into the address bar with `file:///` prefix).
 - In the extension popup, ensure Auto Next is ON and rate ~0.9–1.0.
+ - Tip: Press Ctrl+Shift+O to show the on‑page control overlay (easier to capture than the browser popup in some recorders).
 
 Tip: If file URLs are restricted, serve the demo folder with any local server and use http://localhost/ instead.
 
 ## Shot list
 1) Show the demo page briefly (title “Demo Chapter 1”).
 2) Click the extension icon to open the popup.
-3) Click Start. Status updates to “Reading started…”.
+3) Click Start (in popup or overlay). Status updates to “Reading started…”.
 4) Adjust Rate slider slightly to show controls.
 5) Click Skip Forward once.
 6) Let it read until it auto‑navigates to Chapter 2.
-7) On Chapter 2, open the popup once more for a closing shot.
+7) On Chapter 2, briefly show the overlay or popup again for a closing shot.
 
 ## Recording (Windows)
 - Windows 10/11 Xbox Game Bar: Win+G → Capture → Start Recording → select Chrome window.
