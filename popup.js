@@ -57,6 +57,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     pitchVal.textContent = String(ttsPitch);
     autoLangEl.checked = !!ttsAutoLang;
   });
+
+  // Prime on-demand scripts in the active tab so overlay/hotkeys work immediately after opening the popup.
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id) {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['Readability.js', 'content.js'] });
+    }
+  } catch (e) {
+    // Likely missing file URL access or restricted page; will inject again on Start
+    console.debug('Pre-injection skipped:', e?.message || e);
+  }
 });
 
 // Helper function to inject content script if it's not loaded and send messages to content script
