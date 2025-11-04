@@ -1,45 +1,47 @@
 # Store Listing Content
 
-Title: Auto Next Page Reader
+Title
+Auto Next Page Reader
 
-Short description (max ~80 chars):
-Read pages aloud and auto‑open the next chapter. Works offline.
+Item summary (≤132 chars)
+Read pages aloud and auto‑open the next chapter. Start/Stop/Skip, auto‑language, and TTS rate/pitch controls. Works offline.
 
-Full description:
-Next Chapter Reader extracts the main content from web pages and reads it aloud using your browser’s built‑in Text‑to‑Speech. When a chapter finishes, it can automatically open the next one.
+Item description
+Auto Next Page Reader speaks the main content of any page using your browser’s built‑in Text‑to‑Speech. When the page finishes, it can automatically open the next page/chapter on reading sites—so you can keep listening hands‑free.
 
-Highlights
-- Readability‑powered content extraction
-- Auto‑Next to the following chapter (button → URL pattern → rel=next → next‑link text)
-- Works entirely offline; no data leaves your device
-- Adjustable rate and pitch; auto‑detects language/voice
-- Keyboard: Ctrl + ` to pause/resume
-
-Support the project
-- If this extension helps you, consider supporting: https://buymeacoffee.com/sasmalgiric
+Why you’ll like it
+- Readability‑powered text extraction for clear, clutter‑free narration
+- Start / Stop / Skip forward controls in a compact popup
+- Auto‑Next via next button, URL chapter numbers, rel=next, or link text
+- Auto‑detects language; picks a suitable voice when available
+- Adjustable speech rate and pitch; quick keyboard resume (Ctrl + `)
+- Private by design: runs locally, no analytics or data sharing
 
 How it works
-- The extension runs on the current page to extract readable text and send it to Text‑to‑Speech.
-- Auto‑Next looks for site “next” buttons, common chapter URL patterns, and standard "rel=next" links.
+- On‑demand: when you click Start, the extension extracts readable text and speaks it.
+- Auto‑Next: after finishing, it looks for next‑page patterns and opens the next chapter when found.
 
-Permissions rationale
-- activeTab, scripting: Inject the reading logic into the current page when you use the extension
-- storage: Remember your settings (Auto Read/Next, rate, pitch, language choice)
+Permissions (minimal)
+- activeTab, scripting — inject the reader only into the tab you act on
+- storage — remember your preferences (Auto Read/Next, rate/pitch, language)
 
 Privacy
-- No analytics or telemetry
-- No network calls to third‑party servers
-- All processing happens locally in your browser
-- See the included PRIVACY.md for details
+- No telemetry or user tracking; no data leaves your device
+- See Privacy Policy: https://github.com/sasmalgiri/auto-next-page-reader/blob/main/PRIVACY.md
 
-Credits
-- Includes Readability.js (Apache 2.0). See THIRD_PARTY_NOTICES.md
+Support the project
+Buy Me a Coffee: https://buymeacoffee.com/sasmalgiric
 
-Suggestions for screenshots (1280×800, 3–5 images)
-1) Popup with Start/Stop, Auto Next, Auto Read, and TTS controls
-2) A page being read aloud (status message visible)
-3) Auto‑Next moving to the next chapter on a site with clear navigation
-4) A non‑English article demonstrating language auto‑detection
+Screenshots (1280×800 recommended; up to 5)
+1) Popup UI: Start/Stop/Skip, Auto Next/Auto Read, and TTS sliders
+2) In‑page reading: status showing “Reading in progress…”
+3) Auto‑Next: example site where the next chapter opens
+4) Language auto‑detect: a non‑English article speaking in the correct voice
+5) Options page: custom Support link
+
+Promotional images
+- Small promo tile: 440×280
+- Marquee image (optional, for featuring): 1400×560
 
 Keywords
 read aloud, text to speech, TTS, next chapter, reader, accessibility, language, voice
