@@ -102,17 +102,98 @@ if (!window.__AutoNextReaderInitialized) {
 
 // Function to extract the main content using Readability.js and apply text filters
 function extractMainContent() {
-  let doc = document.cloneNode(true); // Clone the document to avoid modifying the live page
-  let reader = new Readability(doc);
-  let article = reader.parse(); // Parse the document using Readability.js
-  let content = article ? article.textContent : ''; // Get the clean article content
+  // 1) Try Readability first
+  let content = '';
+  try {
+    const doc = document.cloneNode(true);
+    const reader = new Readability(doc);
+    const article = reader.parse();
+    content = article ? (article.textContent || '') : '';
+  } catch {}
 
-  if (content) {
-    content = applyTextFilters(content); // Apply extra filters to the content
-    extractedContent = content; // Store the extracted content for later use
+  // 2) If too short or empty, try site-specific and generic fallbacks
+  if (!content || content.trim().length < 400) {
+    const host = location.hostname.replace(/^www\./, '').toLowerCase();
+    let alt = '';
+
+    // Webnovel specific: chapters often live in a central article container with many <p> blocks
+    if (host.includes('webnovel.com')) {
+      alt = collectTextFromSelectors([
+        '#chapter-content',
+        'article',
+        'main article',
+        'div[role="article"]',
+        'div[class*="chapter"][class*="content"]',
+        'div[class*="content"] section',
+        'main div[class*="content"]'
+      ]);
+    }
+
+    // Generic: pick the largest text block from visible containers
+    if (!alt || alt.trim().length < 400) {
+      alt = findLargestTextBlock();
+    }
+
+    if (alt && alt.trim().length >= (content ? Math.max(400, content.length) : 400)) {
+      content = alt;
+    }
   }
 
+  if (content) {
+    content = applyTextFilters(content);
+    extractedContent = content;
+  }
   return content;
+}
+
+// Helper: gather text from multiple selectors (concatenate <p> text where possible)
+function collectTextFromSelectors(selectors) {
+  try {
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      // Prefer paragraphs
+      const ps = Array.from(el.querySelectorAll('p, div'))
+        .map(n => (n.innerText || n.textContent || '').trim())
+        .filter(t => t && t.length > 0);
+      if (ps.length) return ps.join('\n\n');
+      const raw = (el.innerText || el.textContent || '').trim();
+      if (raw) return raw;
+    }
+  } catch {}
+  return '';
+}
+
+// Helper: find the visible element with the largest amount of readable text
+function findLargestTextBlock() {
+  try {
+    const blacklist = new Set(['SCRIPT','STYLE','NOSCRIPT','NAV','ASIDE','FOOTER','HEADER','FORM','BUTTON']);
+    let bestEl = null;
+    let bestLen = 0;
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      const el = walker.currentNode;
+      if (!(el instanceof HTMLElement)) continue;
+      if (blacklist.has(el.tagName)) continue;
+      if (el.offsetParent === null) continue; // hidden
+      const text = (el.innerText || el.textContent || '').trim();
+      if (!text) continue;
+      const len = text.replace(/\s+/g,' ').length;
+      if (len > bestLen) {
+        bestLen = len;
+        bestEl = el;
+      }
+    }
+    if (bestEl) {
+      // Prefer joining paragraph-like children to avoid nav text
+      const chunks = Array.from(bestEl.querySelectorAll('p, div, li'))
+        .map(n => (n.innerText || n.textContent || '').trim())
+        .filter(Boolean);
+      if (chunks.length >= 2) return chunks.join('\n\n');
+      return (bestEl.innerText || bestEl.textContent || '').trim();
+    }
+  } catch {}
+  return '';
 }
 
 // Function to apply extra filters: remove specific unwanted phrases, special characters, links, repetitive words, and tips
@@ -147,15 +228,48 @@ function applyTextFilters(text) {
       text = text.replace(/\b(\w+)\b(?:\s+\1\b)+/gi, "$1");
     }
 
-    // 5. Remove any instructional phrases like "TIP", "Note", etc.
-    text = text.replace(/\b(?:TIP|Note|Hint|Reminder):?\b.*?(?:\.|\n|$)/gi, ""); // Removes lines starting with TIP, Note, Hint
+    // 5. Remove any instructional/UX phrases and site UI noise
+    const uiPhrases = [
+      'TIP', 'Note', 'Hint', 'Reminder',
+      'COMMENT', 'SEND GIFT', 'Table Of Contents', 'Display Options', 'Bonus Chapter',
+      'Paragraph comment feature is now on the Web', 'GOT IT', 'Add to library', 'Creators\' Thoughts'
+    ];
+    for (const p of uiPhrases) {
+      const r = new RegExp(`^.*${p}.*$`, 'gim');
+      text = text.replace(r, '');
+    }
+
+    // 5b. Remove standalone small vote/count numbers commonly injected in Webnovel paragraphs
+    text = text.replace(/(^|\s)(\d{1,2})(?=\s|$)/g, (m, a, b) => {
+      const n = parseInt(b, 10);
+      return n <= 24 ? (a || '') : m; // keep larger numbers; drop small isolated counts (likely votes)
+    });
 
     // 6. Trim excessive whitespace
-    return text.trim().replace(/\s\s+/g, ' '); // Collapse multiple spaces into one
+    // 7. Normalize whitespace but keep paragraph breaks
+    text = text.replace(/[\t\r]+/g, ' ');
+    text = text.replace(/\u00A0/g, ' ');
+    // collapse more than two newlines to two
+    text = text.replace(/\n{3,}/g, '\n\n');
+    // collapse 2+ spaces
+    return text.trim().replace(/ {2,}/g, ' ');
   } catch (error) {
     console.error("Error during content filtering:", error);
     return text; // Return unmodified text if filtering fails
   }
+}
+
+// Wait for content readiness (helpful for dynamic sites)
+async function waitForReadableContent(timeoutMs = 3000) {
+  const start = Date.now();
+  let last = '';
+  while (Date.now() - start < timeoutMs) {
+    const txt = extractMainContent();
+    if (txt && txt.length > 500) return txt;
+    last = txt || last;
+    await new Promise(r => setTimeout(r, 120));
+  }
+  return last; // return best effort
 }
 
 // Function to handle the text-to-speech
@@ -446,10 +560,14 @@ if (!window.__AutoNextReaderMsgBound) {
         autoReadEnabled = message.autoReadEnabled;
         sendResponse({ autoReadEnabled });
       } else if (message.action === 'startSpeech') {
-        const text = extractMainContent();
-        if (text) {
-          startSpeech(text, message.rate, message.pitch, { lang: message.lang, voiceURI: message.voiceURI, autoLang: message.autoLang });
-        }
+        (async () => {
+          const text = await waitForReadableContent(3500);
+          if (text) {
+            startSpeech(text, message.rate, message.pitch, { lang: message.lang, voiceURI: message.voiceURI, autoLang: message.autoLang });
+          } else {
+            updateStatus('No readable content found. Try scrolling or toggling Reader.');
+          }
+        })();
       } else if (message.action === 'skipForward') {
         skipForward(); // Skip forward in the text
       } else if (message.action === 'stopSpeech') {
@@ -537,8 +655,8 @@ function buildOverlay() {
   autoLangEl.checked = !!ttsAutoLang;
   btnStop.disabled = !isReading;
 
-  btnStart.onclick = () => {
-    const text = extractMainContent();
+  btnStart.onclick = async () => {
+    const text = await waitForReadableContent(3500);
     if (text) {
       // Store latest settings
       ttsRate = parseFloat(rateEl.value); ttsPitch = parseFloat(pitchEl.value); ttsAutoLang = !!autoLangEl.checked;
@@ -546,6 +664,8 @@ function buildOverlay() {
       startSpeech(text, ttsRate, ttsPitch, { autoLang: ttsAutoLang });
       updateStatus('Reading started…');
       btnStart.disabled = true; btnStop.disabled = false;
+    } else {
+      updateStatus('No readable content found yet. Try scrolling or reload.');
     }
   };
   btnStop.onclick = () => { stopSpeech(); updateStatus('Reading stopped.'); btnStart.disabled = false; btnStop.disabled = true; };
