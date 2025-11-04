@@ -42,6 +42,9 @@ if (typeof ttsAutoLang === 'undefined') {
 if (typeof userStoppedReading === 'undefined') {
   var userStoppedReading = false; // Track if the user manually stopped reading
 }
+if (typeof __anprDidPreloadScroll === 'undefined') {
+  var __anprDidPreloadScroll = false; // One-time gentle auto-scroll to trigger lazy/infinite loads
+}
 
 // Overlay UI (for demo/recording)
 if (typeof overlayVisible === 'undefined') {
@@ -267,9 +270,33 @@ async function waitForReadableContent(timeoutMs = 3000) {
     const txt = extractMainContent();
     if (txt && txt.length > 500) return txt;
     last = txt || last;
-    await new Promise(r => setTimeout(r, 120));
+    // If content seems sparse and we haven't tried yet, gently auto-scroll to trigger lazy loading
+    if (!__anprDidPreloadScroll && (last || '').length < 400) {
+      try { await autoScrollFor(1200); __anprDidPreloadScroll = true; } catch {}
+    }
+    await new Promise(r => setTimeout(r, 140));
   }
   return last; // return best effort
+}
+
+// Gently scroll the page to help trigger infinite/lazy load content
+function autoScrollFor(durationMs = 1200) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const step = () => {
+      const now = performance.now();
+      const t = now - start;
+      // ease-out scroll steps
+      const dy = Math.max(1, Math.round((1 - Math.min(1, t / durationMs)) * 24));
+      window.scrollBy(0, dy);
+      if (t < durationMs) {
+        requestAnimationFrame(step);
+      } else {
+        resolve();
+      }
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 // Function to handle the text-to-speech
