@@ -16,10 +16,12 @@ Why you’ll like it
 - Auto‑detects language; picks a suitable voice when available
 - Adjustable speech rate and pitch; quick keyboard resume (Ctrl + `)
 - Private by design: runs locally, no analytics or data sharing
+ - NEW: Optional Auto‑scroll while reading to trigger lazy/infinite content on long chapters
 
 How it works
 - On‑demand: when you click Start, the extension extracts readable text and speaks it.
 - Auto‑Next: after finishing, it looks for next‑page patterns and opens the next chapter when found.
+ - Dynamic pages: if a site loads text on scroll, Auto‑scroll (optional) helps fetch content while you listen.
 
 Permissions (minimal)
 - activeTab, scripting — inject the reader only into the tab you act on
