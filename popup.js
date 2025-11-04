@@ -69,11 +69,11 @@ async function sendMessageToTab(action, data = {}) {
     return;
   }
 
-  // Inject the content script if it's not already injected
+  // Inject scripts on-demand (Readability first, then content script)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['content.js']
+      files: ['Readability.js', 'content.js']
     });
   } catch (err) {
     console.error('Failed to inject content script:', err);

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auto Next Page Reader • Asset Generator</title>
+  <style>
+    :root {
+      --bg1: #5b8cff;
+      --bg2: #7a5cff;
+      --bg3: #1f2546;
+      --ink: #0f1226;
+      --ink-weak: #42507a;
+      --white: #ffffff;
+      --accent: #7a5cff;
+    }
+    html, body { height: 100%; }
+    body { margin: 0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--ink); background: #f5f7ff; }
+    header { position: sticky; top: 0; padding: 16px 24px; background: linear-gradient(90deg, var(--bg1), var(--bg2)); color: var(--white); box-shadow: 0 2px 8px rgba(0,0,0,.12); z-index: 2; }
+    header h1 { margin: 0; font-size: 18px; }
+    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(15,18,38,.08); padding: 14px; display: flex; flex-direction: column; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
+    canvas { width: 100%; height: auto; border-radius: 10px; background: #e8ecff; }
+    button { appearance: none; border: none; background: var(--bg1); color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 1px 5px rgba(15,18,38,.15); }
+    button:hover { filter: brightness(.95); }
+    .hint { color: var(--ink-weak); font-size: 12px; }
+    .row > span { font-weight: 600; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+    .controls label { display: inline-flex; gap: 6px; align-items: center; background: #fff; border-radius: 8px; padding: 8px 10px; box-shadow: inset 0 0 0 1px #e3e7ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Auto Next Page Reader • Asset Generator</h1>
+  </header>
+  <main>
+    <p class="hint">Export PNGs for store listings and icons. The previews below are vector‑drawn on a canvas and can be downloaded at exact pixel sizes.</p>
+
+    <section class="controls">
+      <label><input id="showTitle" type="checkbox" checked /> Show title</label>
+      <label><input id="showSubtitle" type="checkbox" checked /> Show subtitle</label>
+      <label><input id="dark" type="checkbox" /> Dark mode</label>
+      <label><input id="center" type="checkbox" checked /> Center layout</label>
+      <label><input id="hq2x" type="checkbox" checked /> High quality (2× export)</label>
+    </section>
+
+    <div id="grid" class="grid"></div>
+  </main>
+
+<script>
+const SIZES = [
+  {w:1280,h:800,label:'Screenshot (Store) 1280x800'},
+  {w:640,h:400,label:'Screenshot (Store) 640x400'},
+  {w:512,h:512,label:'Icon 512x512'},
+  {w:256,h:256,label:'Icon 256x256'},
+  {w:128,h:128,label:'Icon 128x128'},
+  {w:48,h:48,label:'Icon 48x48'},
+  {w:16,h:16,label:'Icon 16x16'},
+];
+
+const state = {
+  showTitle: true,
+  showSubtitle: true,
+  dark: false,
+  center: true,
+  hq2x: true,
+};
+
+document.getElementById('showTitle').onchange = e => { state.showTitle = e.target.checked; renderAll(); };
+document.getElementById('showSubtitle').onchange = e => { state.showSubtitle = e.target.checked; renderAll(); };
+document.getElementById('dark').onchange = e => { state.dark = e.target.checked; renderAll(); };
+document.getElementById('center').onchange = e => { state.center = e.target.checked; renderAll(); };
+document.getElementById('hq2x').onchange = e => { state.hq2x = e.target.checked; };
+
+function drawLogo(ctx, x, y, scale=1, centered=true) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  // If centered, shift local origin to visual center of the logo
+  if (centered) {
+    // Approximate bounds: x:[8..164], y:[16..130] => center ~ (86, 73)
+    ctx.translate(-86, -73);
+  }
+  // Book
+  ctx.lineWidth = 8;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#fff';
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  // left cover
+  roundRect(ctx, 8, 16, 84, 96, 12); ctx.fill(); ctx.stroke();
+  // right cover
+  roundRect(ctx, 110, 16, 54, 96, 12); ctx.fill(); ctx.stroke();
+  // spine
+  ctx.beginPath(); ctx.moveTo(100,16); ctx.lineTo(100,130); ctx.stroke();
+  // lines
+  for (const y of [44,64,84,104]) { ctx.beginPath(); ctx.moveTo(24,y); ctx.lineTo(y===104?72:88,y); ctx.stroke(); }
+
+  // Next arrow badge
+  ctx.fillStyle = '#fff';
+  circle(ctx, 128, 96, 34); ctx.fill();
+  ctx.fillStyle = '#7a5cff';
+  triangle(ctx, 116, 82, 144, 96, 116, 110); ctx.fill();
+
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); }
+function triangle(ctx, x1,y1,x2,y2,x3,y3){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.closePath(); }
+
+function drawCard(canvas, label) {
+  const ctx = canvas.getContext('2d');
+  const {width: W, height: H} = canvas;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  // Background
+  const grad = ctx.createLinearGradient(0,0,W,H);
+  if (!state.dark) { grad.addColorStop(0,'#5b8cff'); grad.addColorStop(1,'#7a5cff'); }
+  else { grad.addColorStop(0,'#1f2546'); grad.addColorStop(1,'#2c2f57'); }
+  ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+
+  // A soft vignette
+  ctx.fillStyle = state.dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)';
+  for (let i=0;i<6;i++) {
+    const r = Math.max(W,H) * (0.75 + i*0.1);
+    ctx.globalAlpha = 0.08 - i*0.012;
+    circle(ctx, W*0.2 + i*40, H*0.2 + i*30, r); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Layout
+  const minDim = Math.min(W,H);
+  let logoScale = Math.max(0.8, Math.min(2.2, minDim/220));
+
+  if (state.center) {
+    // Centered composition: logo centered; text centered under it
+    const centerX = W * 0.5;
+    const centerY = H * 0.45;
+   
+    // For small icons, scale up a bit to fill
+    if (W <= 256 || H <= 256) logoScale = Math.max(1.0, Math.min(3.0, minDim/160));
+    drawLogo(ctx, centerX, centerY, logoScale, true);
+
+    // Title & subtitle
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+
+    if (state.showTitle && W >= 300) {
+      ctx.font = `${Math.round(Math.max(18, Math.min(64, W*0.06)))}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillText('Auto Next Page Reader', Math.round(W*0.50), Math.round(H*0.68));
+    }
+    if (state.showSubtitle && W >= 400) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = `${Math.round(Math.max(12, Math.min(28, W*0.028)))}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillText('Read pages aloud. Auto-next chapters.', Math.round(W*0.50), Math.round(H*0.78));
+    }
+  } else {
+    // Original left-right layout
+    const logoX = W*0.24;
+    const logoY = H*0.42;
+    drawLogo(ctx, logoX, logoY, logoScale, false);
+
+    // Title & subtitle
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+
+    if (state.showTitle && W >= 300) {
+      ctx.font = `${Math.round(Math.max(18, Math.min(64, W*0.06)))}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillText('Auto Next Page Reader', Math.round(W*0.48), Math.round(H*0.30));
+    }
+    if (state.showSubtitle && W >= 400) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = `${Math.round(Math.max(12, Math.min(28, W*0.028)))}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillText('Read pages aloud. Auto-next chapters.', Math.round(W*0.48), Math.round(H*0.42));
+    }
+  }
+
+  // Feature bullets for large banners only
+  if (W >= 900) {
+    const bullets = [
+      'Start / Stop / Skip forward',
+      'Auto-detect language + voices',
+      'Follows Next links & chapter numbers',
+    ];
+    ctx.font = `${Math.round(Math.max(12, Math.min(24, W*0.022)))}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    let y = Math.round(H*0.56);
+    bullets.forEach(b => {
+      // dot
+      ctx.fillStyle = '#fff';
+      circle(ctx, Math.round(W*0.50)-10, y+10, 4); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillText(b, Math.round(W*0.50), y);
+      y += Math.round(H*0.08);
+    });
+  }
+}
+
+function renderAll(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (const s of SIZES) {
+    const wrap = document.createElement('div'); wrap.className = 'card';
+    const row = document.createElement('div'); row.className = 'row';
+    const span = document.createElement('span'); span.textContent = `${s.label}`;
+    const btn = document.createElement('button'); btn.textContent = 'Download PNG';
+    row.appendChild(span); row.appendChild(btn);
+    const canvas = document.createElement('canvas'); canvas.width = s.w; canvas.height = s.h;
+    wrap.appendChild(row); wrap.appendChild(canvas);
+    grid.appendChild(wrap);
+    drawCard(canvas, s.label);
+    btn.onclick = () => {
+      // Optional HQ: render to a higher-resolution offscreen canvas, then downsample
+      const scale = state.hq2x ? 2 : 1;
+      if (scale === 1) {
+        drawCard(canvas, s.label); // redraw latest state
+        const link = document.createElement('a');
+        link.download = `${s.label.replace(/[^a-z0-9]+/gi,'-').toLowerCase()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } else {
+        const off = document.createElement('canvas');
+        off.width = s.w * scale; off.height = s.h * scale;
+        // Temporarily draw at higher resolution
+        const tmp = document.createElement('canvas');
+        tmp.width = s.w; tmp.height = s.h;
+        drawCard(tmp, s.label);
+        const octx = off.getContext('2d');
+        octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+        octx.drawImage(tmp, 0, 0, s.w, s.h, 0, 0, off.width, off.height);
+        const link = document.createElement('a');
+        link.download = `${s.label.replace(/[^a-z0-9]+/gi,'-').toLowerCase()}@2x.png`;
+        link.href = off.toDataURL('image/png');
+        link.click();
+      }
+    };
+  }
+}
+
+renderAll();
+</script>
+</body>
+</html>
