@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.19 — 2026-01-11
+- UI Simplification: Streamlined popup interface to focus on core features
+- Removed advanced voice controls from main popup for cleaner UX
+- All TTS features remain functional with smart defaults in background
+- Simplified interface: 6 essential buttons only (Start, Stop, Skip, 3 toggles)
+- Advanced users can still access full settings via "Important Settings" button
+
 ## 2.6.18 — 2026-01-11
 - Verification: Comprehensive code review confirming all project goals are properly implemented
 - Documentation: Added future-proof customization guide (FUTURE_PROOF.md)

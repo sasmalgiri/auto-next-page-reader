@@ -3,7 +3,7 @@
 Title: Auto Next Page Reader
 
 Short description (max ~80 chars):
-Read pages aloud and automatically open the next page or chapter.
+Read aloud (Text-to-Speech) and automatically open the next page/chapter.
 
 Full description:
 Auto Next Page Reader extracts the main content from web pages and reads it aloud using your browser’s built‑in Text‑to‑Speech. When a chapter finishes, it can automatically open the next one.
@@ -48,4 +48,4 @@ Screenshots (1280×800, 3–5 images)
 4) A non‑English article demonstrating language auto‑detection
 
 Keywords
-read aloud, text to speech, TTS, next chapter, reader, accessibility, language, voice
+read aloud, text to speech, text-to-speech, TTS, auto next, next chapter, next page, reader, accessibility, language, voice

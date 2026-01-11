@@ -134,3 +134,8 @@ h2 i {
 }
 .tts-controls label { font-size: 12px; color: #e5e5e5; }
 .tts-controls input[type="range"] { width: 100%; }
+
+/* Simplified UI: Hide advanced voice controls */
+.tts-controls {
+  display: none !important;
+}

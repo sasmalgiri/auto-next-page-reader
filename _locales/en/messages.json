@@ -1,6 +1,6 @@
 {
   "extName": { "message": "Auto Next Page Reader" },
   "extShortName": { "message": "Auto Next Reader" },
-  "extDesc": { "message": "Read pages aloud and automatically open the next page or chapter." },
+  "extDesc": { "message": "Read aloud (Text-to-Speech) and auto-open the next page or chapter." },
   "actionTitle": { "message": "Open Auto Next Page Reader" }
 }

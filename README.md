@@ -1,12 +1,12 @@
 # Auto Next Page Reader
 
-An auto-reader extension that extracts the main article text using Readability, reads it aloud with the Web Speech API, and automatically opens the next page/chapter.
+Chrome/Edge extension that extracts the main article text (Readability), reads it aloud via Text-to-Speech (Web Speech API), and can automatically open the next page/chapter.
 
 ## Features
 - Readability-powered content extraction
-- Text-to-Speech (rate and pitch defaults, system voice)
+- Read aloud / Text-to-Speech (rate + pitch controls; uses your browser voices)
 - Auto-Read on page load (toggle)
-- Auto Next chapter (rel="next" / URL increment / site-specific selector)
+- Auto Next chapter/page (next button, rel="next", URL increment patterns, and common “next” links)
 - Skip Forward
 - Keyboard: Ctrl+` to pause/resume
 
