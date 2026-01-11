@@ -26,10 +26,16 @@ How it works
 Permissions (minimal)
 - activeTab, scripting — inject the reader only into the tab you act on
 - storage — remember your preferences (Auto Read/Next, rate/pitch, language)
+ - webNavigation — resume reading on the next page after a navigation completes in the tab where you started
 
 Privacy
 - No telemetry or user tracking; no data leaves your device
 - See Privacy Policy: https://github.com/sasmalgiri/auto-next-page-reader/blob/main/PRIVACY.md
+
+Justification for webNavigation
+- Used only to detect main‑frame navigation completion in the same tab where you clicked Start, so the reader can auto‑resume on the next chapter.
+- Scoped by optional host permissions: we ask for the current site origin at runtime; other sites/tabs are not monitored.
+- No URLs or browsing data are sent to any server; no analytics.
 
 Support the project
 Buy Me a Coffee: https://buymeacoffee.com/sasmalgiric

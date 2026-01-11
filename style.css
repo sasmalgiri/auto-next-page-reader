@@ -56,6 +56,10 @@ h2 i {
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.preview-inline {
+  margin-left: 8px;
+}
+
 .control-btn i {
   margin-right: 7px; /* Reduced margin-right for compact layout */
 }

@@ -3,9 +3,13 @@
   "default_locale": "en",
   "name": "__MSG_extName__",
   "short_name": "__MSG_extShortName__",
-  "version": "2.3",
+  "version": "2.6.18",
   "description": "__MSG_extDesc__",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "scripting", "webNavigation"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "__MSG_actionTitle__",
     "default_popup": "popup.html",
@@ -23,6 +27,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "host_permissions": []
+  }
 }

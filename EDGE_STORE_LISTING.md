@@ -22,12 +22,18 @@ How it works
 Permissions rationale
 - activeTab, scripting: Inject the reading logic into the current page when you use the extension
 - storage: Remember your settings (Auto Read/Next, rate, pitch, language choice)
+ - webNavigation: Detect main‑frame navigation completion in the same tab to auto‑resume reading on the next page
 
 Privacy
 - No analytics or telemetry
 - No network calls to third‑party servers
 - All processing happens locally in your browser
 - See PRIVACY.md for details
+
+Justification for webNavigation
+- Purpose: keep reading across pages by triggering auto‑start after navigation completes in the tab where you started.
+- Scope: limited to the granted origin (optional host permissions) and to that tab’s session; other sites/tabs aren’t monitored.
+- Data: no browsing history is collected or transmitted.
 
 Support the project
 - If this extension helps you, consider supporting: https://buymeacoffee.com/sasmalgiric
