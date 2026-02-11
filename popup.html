@@ -45,6 +45,29 @@
       Auto Scroll OFF
     </button>
 
+    <section class="translate-section">
+      <button id="toggleTranslate" class="control-btn toggle">
+        Hindi Translation OFF
+      </button>
+      <div id="translateControls" class="translate-controls" style="display:none;">
+        <div class="control-row">
+          <label for="hindiVoiceGender">Hindi Voice</label>
+          <select id="hindiVoiceGender">
+            <option value="female" selected>Female (Swara)</option>
+            <option value="male">Male (Madhur)</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>
+            <button id="previewHindi" class="control-btn preview-inline">Preview Hindi</button>
+          </label>
+        </div>
+        <div id="premiumNotice" class="premium-notice" style="display:none;">
+          Premium feature — enter license key in Options.
+        </div>
+      </div>
+    </section>
+
     <section class="tts-controls">
       <div class="control-row">
         <label for="voiceGender">Gender</label>

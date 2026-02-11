@@ -1,3 +1,15 @@
+// Ordered list of content scripts to inject (dependencies first)
+const CONTENT_SCRIPTS = [
+  'Readability.js',
+  'content-config.js',
+  'content-extract.js',
+  'content-translate.js',
+  'content-tts.js',
+  'content-navigation.js',
+  'content-ui.js',
+  'content-main.js'
+];
+
 let autoNextEnabled = true; // Default is ON
 let isSpeaking = false; // Track if the speech is currently speaking
 let activeTabId = null; // Track the tab ID where reading was initiated
@@ -17,6 +29,9 @@ let naturalPreset = true;
 let dynamicProsody = true;
 let dialogueAlternate = false;
 let instantStartEnabled = false; // New flag for instant start on popup open
+let translateEnabled = false;
+let hindiVoiceGender = 'female';
+let premiumActive = false;
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
@@ -37,7 +52,7 @@ document.getElementById('toggleAutoRead').addEventListener('click', async () => 
 
 // Restore state when popup is reopened
 document.addEventListener('DOMContentLoaded', async () => {
-  chrome.storage.local.get(['isSpeaking', 'autoNextEnabled', 'activeTabId', 'autoReadEnabled', 'ttsRate', 'ttsPitch', 'ttsAutoLang', 'autoScrollWhileReading', 'voiceURI', 'femaleVoiceURI', 'maleVoiceURI', 'activeVoice', 'voiceGender', 'preferNaturalVoices', 'naturalPreset', 'dynamicProsody', 'dialogueAlternate', 'instantStartEnabled'], (data) => {
+  chrome.storage.local.get(['isSpeaking', 'autoNextEnabled', 'activeTabId', 'autoReadEnabled', 'ttsRate', 'ttsPitch', 'ttsAutoLang', 'autoScrollWhileReading', 'voiceURI', 'femaleVoiceURI', 'maleVoiceURI', 'activeVoice', 'voiceGender', 'preferNaturalVoices', 'naturalPreset', 'dynamicProsody', 'dialogueAlternate', 'instantStartEnabled', 'translateEnabled', 'hindiVoiceGender', 'premiumActive'], (data) => {
     isSpeaking = data.isSpeaking || false;
     autoNextEnabled = data.autoNextEnabled ?? true;
     activeTabId = data.activeTabId || null;
@@ -56,6 +71,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   dynamicProsody = typeof data.dynamicProsody === 'boolean' ? data.dynamicProsody : true;
   dialogueAlternate = typeof data.dialogueAlternate === 'boolean' ? data.dialogueAlternate : false;
   instantStartEnabled = typeof data.instantStartEnabled === 'boolean' ? data.instantStartEnabled : false;
+  translateEnabled = typeof data.translateEnabled === 'boolean' ? data.translateEnabled : false;
+  hindiVoiceGender = typeof data.hindiVoiceGender === 'string' ? data.hindiVoiceGender : 'female';
+  premiumActive = typeof data.premiumActive === 'boolean' ? data.premiumActive : false;
+
+  // Also check sync storage for premium key
+  chrome.storage.sync.get(['premiumKey'], (sd) => {
+    if (typeof sd.premiumKey === 'string' && sd.premiumKey) premiumActive = true;
+    _updateTranslateUI();
+  });
 
     // Update UI based on the stored state
     if (isSpeaking) {
@@ -95,13 +119,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (prosodyEl) prosodyEl.checked = !!dynamicProsody;
     if (dialogueEl) dialogueEl.checked = !!dialogueAlternate;
     if (instantEl) instantEl.checked = !!instantStartEnabled;
+
+    // Translation UI init
+    const translateBtn = document.getElementById('toggleTranslate');
+    const hindiGenderEl = document.getElementById('hindiVoiceGender');
+    if (translateBtn) translateBtn.textContent = translateEnabled ? 'Hindi Translation ON' : 'Hindi Translation OFF';
+    if (hindiGenderEl) hindiGenderEl.value = hindiVoiceGender;
+    const translateCtrl = document.getElementById('translateControls');
+    if (translateCtrl) translateCtrl.style.display = translateEnabled ? 'block' : 'none';
   });
 
   // Prime on-demand scripts in the active tab so overlay/hotkeys work immediately after opening the popup.
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['Readability.js', 'content.js'] });
+      for (const file of CONTENT_SCRIPTS) {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [file] });
+      }
       // Load voices from the page context and initialize selectors
       await loadAndPopulateVoices();
       // Attempt instant start (fast provisional reading) after voices are loaded
@@ -474,7 +508,9 @@ async function sendMessageToTab(action, data = {}) {
 
   const inject = async () => {
     try {
-      await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: ['Readability.js', 'content.js'] });
+      for (const f of CONTENT_SCRIPTS) {
+        await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: [f] });
+      }
     } catch (err) {
       console.debug('Initial inject failed:', err?.message || err);
     }
@@ -724,6 +760,57 @@ document.getElementById('pitch').addEventListener('change', () => {
 document.getElementById('autoLang').addEventListener('change', (e) => {
   ttsAutoLang = !!e.target.checked;
   chrome.storage.local.set({ ttsAutoLang });
+});
+
+// ---------- Translation controls ----------
+
+function _updateTranslateUI() {
+  const btn = document.getElementById('toggleTranslate');
+  const ctrl = document.getElementById('translateControls');
+  const notice = document.getElementById('premiumNotice');
+  if (btn) btn.textContent = translateEnabled ? 'Hindi Translation ON' : 'Hindi Translation OFF';
+  if (ctrl) ctrl.style.display = translateEnabled ? 'block' : 'none';
+  if (notice) notice.style.display = (translateEnabled && !premiumActive) ? 'block' : 'none';
+}
+
+document.getElementById('toggleTranslate')?.addEventListener('click', async () => {
+  if (!premiumActive) {
+    // Check premium key from sync storage
+    const sd = await chrome.storage.sync.get(['premiumKey']);
+    if (typeof sd.premiumKey === 'string' && sd.premiumKey) {
+      premiumActive = true;
+      chrome.storage.local.set({ premiumActive: true });
+    } else {
+      updateStatus('Premium feature — enter license key in Options page.');
+      _updateTranslateUI();
+      const ctrl = document.getElementById('translateControls');
+      const notice = document.getElementById('premiumNotice');
+      if (ctrl) ctrl.style.display = 'block';
+      if (notice) notice.style.display = 'block';
+      return;
+    }
+  }
+  translateEnabled = !translateEnabled;
+  chrome.storage.local.set({ translateEnabled });
+  try { await sendMessageToTab('toggleTranslate', { translateEnabled }); } catch (e) { console.debug('toggleTranslate send failed:', e); }
+  _updateTranslateUI();
+  updateStatus(translateEnabled ? 'Hindi translation enabled.' : 'Hindi translation disabled.');
+});
+
+document.getElementById('hindiVoiceGender')?.addEventListener('change', async (e) => {
+  hindiVoiceGender = e.target.value || 'female';
+  chrome.storage.local.set({ hindiVoiceGender });
+  try { await sendMessageToTab('setHindiVoiceGender', { hindiVoiceGender }); } catch (e2) { console.debug('setHindiVoiceGender failed:', e2); }
+});
+
+document.getElementById('previewHindi')?.addEventListener('click', async () => {
+  try {
+    await sendMessageToTab('previewHindiVoice', { hindiVoiceGender });
+    updateStatus('Playing Hindi voice preview...');
+  } catch (e) {
+    console.debug('Hindi preview failed:', e);
+    updateStatus('Hindi preview failed. Make sure Hindi voices are installed.');
+  }
 });
 
 // Enable/disable buttons based on the current state

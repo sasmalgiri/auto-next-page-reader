@@ -32,6 +32,34 @@
     <span id="status" class="hint"></span>
   </div>
 
+  <hr style="margin:24px 0;border-color:#ddd;" />
+
+  <h2>Premium Features</h2>
+  <p>Enter your premium license key to unlock Hindi translation and other advanced features.</p>
+
+  <div class="row">
+    <label for="premiumKey">Premium License Key</label>
+    <input id="premiumKey" type="password" placeholder="Enter your license key" />
+  </div>
+  <div class="actions">
+    <button id="activatePremium">Activate</button>
+    <span id="premiumStatus" class="hint"></span>
+  </div>
+
+  <hr style="margin:24px 0;border-color:#ddd;" />
+
+  <h2>Google Cloud Translation API (Optional)</h2>
+  <p>For higher quality translations, enter your Google Cloud Translation API key. Without it, the free Google Translate endpoint will be used.</p>
+
+  <div class="row">
+    <label for="translateApiKey">API Key</label>
+    <input id="translateApiKey" type="password" placeholder="Your Google Cloud API key (optional)" />
+  </div>
+  <div class="actions">
+    <button id="saveApiKey">Save API Key</button>
+    <span id="apiKeyStatus" class="hint"></span>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>

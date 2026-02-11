@@ -4,6 +4,18 @@
 const activeSessions = new Map(); // tabId -> { originPattern, mode }
 const SESSIONS_KEY = 'anpr:sessions:v1';
 
+// Ordered list of content scripts to inject (dependencies first)
+const CONTENT_SCRIPTS = [
+  'Readability.js',
+  'content-config.js',
+  'content-extract.js',
+  'content-translate.js',
+  'content-tts.js',
+  'content-navigation.js',
+  'content-ui.js',
+  'content-main.js'
+];
+
 async function saveSessions() {
   try {
     const obj = {};
@@ -112,8 +124,9 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
     console.log('[ANPR BG] Active session found, injecting scripts...');
     // Try to inject readability + content, then kick off reading if auto-read is enabled in content
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['Readability.js'] });
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      for (const file of CONTENT_SCRIPTS) {
+        await chrome.scripting.executeScript({ target: { tabId }, files: [file] });
+      }
       console.log('[ANPR BG] Scripts injected successfully.');
     } catch (e) {
       console.warn('[ANPR BG] Injection after navigation failed:', e && e.message ? e.message : e);
