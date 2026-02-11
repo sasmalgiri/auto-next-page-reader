@@ -30,33 +30,106 @@
     });
   });
 
-  // ---------- Premium License Key ----------
+  // ---------- Premium License Key (Gumroad) ----------
+  // TODO: Replace with your actual Gumroad product permalink
+  const GUMROAD_PRODUCT_ID = 'YOUR_GUMROAD_PRODUCT_PERMALINK';
+
   const premiumInput = document.getElementById('premiumKey');
   const premiumStatus = document.getElementById('premiumStatus');
+  const activateBtn = document.getElementById('activatePremium');
+  const deactivateBtn = document.getElementById('deactivatePremium');
 
-  chrome.storage.sync.get(['premiumKey'], (data) => {
+  // Load existing license state
+  chrome.storage.sync.get(['premiumKey', 'premiumValidatedAt', 'premiumEmail'], (data) => {
     if (typeof data.premiumKey === 'string' && data.premiumKey) {
       premiumInput.value = data.premiumKey;
-      premiumStatus.textContent = 'Premium active';
-      premiumStatus.className = 'hint ok';
+      if (data.premiumValidatedAt) {
+        const date = new Date(data.premiumValidatedAt).toLocaleDateString();
+        premiumStatus.textContent = `Premium active (validated ${date})${data.premiumEmail ? ' — ' + data.premiumEmail : ''}`;
+        premiumStatus.className = 'hint ok';
+        if (deactivateBtn) deactivateBtn.style.display = 'inline-block';
+      }
     }
   });
 
-  document.getElementById('activatePremium').addEventListener('click', () => {
+  async function verifyGumroadLicense(licenseKey) {
+    try {
+      const resp = await fetch('https://api.gumroad.com/v2/licenses/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `product_id=${encodeURIComponent(GUMROAD_PRODUCT_ID)}&license_key=${encodeURIComponent(licenseKey)}&increment_uses_count=true`
+      });
+      if (!resp.ok) return { success: false, error: 'Network error (' + resp.status + ')' };
+      const data = await resp.json();
+      if (data.success) {
+        return {
+          success: true,
+          email: data.purchase?.email || null,
+          productName: data.purchase?.product_name || null,
+          refunded: !!data.purchase?.refunded,
+          disputed: !!data.purchase?.disputed,
+          uses: data.uses || 0
+        };
+      }
+      return { success: false, error: data.message || 'Invalid license key' };
+    } catch (e) {
+      return { success: false, error: 'Could not reach Gumroad. Check your internet connection.' };
+    }
+  }
+
+  activateBtn.addEventListener('click', async () => {
     const key = premiumInput.value.trim();
     if (!key) {
       premiumStatus.textContent = 'Please enter a license key.';
       premiumStatus.className = 'hint err';
       return;
     }
-    chrome.storage.sync.set({ premiumKey: key }, () => {
-      chrome.storage.local.set({ premiumActive: true }, () => {
-        premiumStatus.textContent = 'Premium activated!';
-        premiumStatus.className = 'hint ok';
-        setTimeout(() => { premiumStatus.textContent = 'Premium active'; }, 2000);
+
+    premiumStatus.textContent = 'Verifying with Gumroad...';
+    premiumStatus.className = 'hint';
+    activateBtn.disabled = true;
+
+    const result = await verifyGumroadLicense(key);
+    activateBtn.disabled = false;
+
+    if (result.success && !result.refunded && !result.disputed) {
+      const now = Date.now();
+      chrome.storage.sync.set({
+        premiumKey: key,
+        premiumValidatedAt: now,
+        premiumEmail: result.email || ''
+      }, () => {
+        chrome.storage.local.set({ premiumActive: true }, () => {
+          premiumStatus.textContent = `Premium activated! ${result.email ? '(' + result.email + ')' : ''}`;
+          premiumStatus.className = 'hint ok';
+          if (deactivateBtn) deactivateBtn.style.display = 'inline-block';
+        });
       });
-    });
+    } else if (result.refunded) {
+      premiumStatus.textContent = 'This license has been refunded.';
+      premiumStatus.className = 'hint err';
+      chrome.storage.local.set({ premiumActive: false });
+    } else if (result.disputed) {
+      premiumStatus.textContent = 'This license is under dispute.';
+      premiumStatus.className = 'hint err';
+      chrome.storage.local.set({ premiumActive: false });
+    } else {
+      premiumStatus.textContent = result.error || 'Invalid license key.';
+      premiumStatus.className = 'hint err';
+    }
   });
+
+  // Deactivate premium
+  if (deactivateBtn) {
+    deactivateBtn.addEventListener('click', () => {
+      chrome.storage.sync.remove(['premiumKey', 'premiumValidatedAt', 'premiumEmail']);
+      chrome.storage.local.set({ premiumActive: false });
+      premiumInput.value = '';
+      premiumStatus.textContent = 'Premium deactivated.';
+      premiumStatus.className = 'hint';
+      deactivateBtn.style.display = 'none';
+    });
+  }
 
   // ---------- Google Cloud Translation API Key ----------
   const apiKeyInput = document.getElementById('translateApiKey');

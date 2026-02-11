@@ -75,9 +75,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   hindiVoiceGender = typeof data.hindiVoiceGender === 'string' ? data.hindiVoiceGender : 'female';
   premiumActive = typeof data.premiumActive === 'boolean' ? data.premiumActive : false;
 
-  // Also check sync storage for premium key
-  chrome.storage.sync.get(['premiumKey'], (sd) => {
-    if (typeof sd.premiumKey === 'string' && sd.premiumKey) premiumActive = true;
+  // Check sync storage for Gumroad-validated premium key
+  chrome.storage.sync.get(['premiumKey', 'premiumValidatedAt'], (sd) => {
+    if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) {
+      premiumActive = true;
+    }
     _updateTranslateUI();
   });
 
@@ -775,13 +777,13 @@ function _updateTranslateUI() {
 
 document.getElementById('toggleTranslate')?.addEventListener('click', async () => {
   if (!premiumActive) {
-    // Check premium key from sync storage
-    const sd = await chrome.storage.sync.get(['premiumKey']);
-    if (typeof sd.premiumKey === 'string' && sd.premiumKey) {
+    // Check for Gumroad-validated premium key
+    const sd = await chrome.storage.sync.get(['premiumKey', 'premiumValidatedAt']);
+    if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) {
       premiumActive = true;
       chrome.storage.local.set({ premiumActive: true });
     } else {
-      updateStatus('Premium feature — enter license key in Options page.');
+      updateStatus('Premium feature — buy a license key and activate in Options page.');
       _updateTranslateUI();
       const ctrl = document.getElementById('translateControls');
       const notice = document.getElementById('premiumNotice');

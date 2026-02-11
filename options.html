@@ -35,14 +35,16 @@
   <hr style="margin:24px 0;border-color:#ddd;" />
 
   <h2>Premium Features</h2>
-  <p>Enter your premium license key to unlock Hindi translation and other advanced features.</p>
+  <p>Unlock Hindi translation and other advanced features with a license key.</p>
+  <p class="hint">Don't have a key? <a id="buyLink" href="#" target="_blank" style="color:#1a73e8;">Buy a license on Gumroad</a></p>
 
   <div class="row">
-    <label for="premiumKey">Premium License Key</label>
-    <input id="premiumKey" type="password" placeholder="Enter your license key" />
+    <label for="premiumKey">License Key</label>
+    <input id="premiumKey" type="text" placeholder="Enter your Gumroad license key" />
   </div>
   <div class="actions">
     <button id="activatePremium">Activate</button>
+    <button id="deactivatePremium" style="display:none;margin-left:8px;color:#9e1b1b;">Deactivate</button>
     <span id="premiumStatus" class="hint"></span>
   </div>
 

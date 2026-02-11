@@ -380,9 +380,9 @@ if (!window.__AutoNextReaderInitialized) {
       if (typeof td.hindiVoiceURI === 'string') __anprHindiVoiceURI = td.hindiVoiceURI;
       if (typeof td.premiumActive === 'boolean') __anprPremiumActive = td.premiumActive;
     });
-    chrome.storage?.sync?.get(['translateApiKey', 'premiumKey'], (sd) => {
+    chrome.storage?.sync?.get(['translateApiKey', 'premiumKey', 'premiumValidatedAt'], (sd) => {
       if (typeof sd.translateApiKey === 'string' && sd.translateApiKey) __anprTranslateApiKey = sd.translateApiKey;
-      if (typeof sd.premiumKey === 'string' && sd.premiumKey) __anprPremiumActive = true;
+      if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) __anprPremiumActive = true;
     });
     // Restore scroll position for infinite pages to resume where left off
     if (__ANPR_MODE__ === 'infinite') {
