@@ -284,7 +284,7 @@ if (typeof __anprTranslateEnabled === 'undefined') { var __anprTranslateEnabled 
 if (typeof __anprTranslateApiKey === 'undefined') { var __anprTranslateApiKey = null; }
 if (typeof __anprHindiVoiceGender === 'undefined') { var __anprHindiVoiceGender = 'female'; }
 if (typeof __anprHindiVoiceURI === 'undefined') { var __anprHindiVoiceURI = null; }
-if (typeof __anprPremiumActive === 'undefined') { var __anprPremiumActive = false; }
+if (typeof __anprPremiumActive === 'undefined') { var __anprPremiumActive = true; } // DEV: true for testing
 
 // Flow watchdog state
 if (typeof __anprLastUtteranceTs === 'undefined') { var __anprLastUtteranceTs = 0; }

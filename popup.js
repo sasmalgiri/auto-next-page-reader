@@ -31,7 +31,7 @@ let dialogueAlternate = false;
 let instantStartEnabled = false; // New flag for instant start on popup open
 let translateEnabled = false;
 let hindiVoiceGender = 'female';
-let premiumActive = false;
+let premiumActive = true; // DEV: true for testing
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
