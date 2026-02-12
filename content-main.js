@@ -412,6 +412,7 @@ if (!window.__AutoNextReaderMsgBound) {
       } else if (message.action === 'setHindiVoiceGender') {
         __anprHindiVoiceGender = message.hindiVoiceGender || 'female';
         try { chrome.storage?.local.set({ hindiVoiceGender: __anprHindiVoiceGender }); } catch {}
+        try { if (typeof anprResetHindiVoiceCache === 'function') anprResetHindiVoiceCache(); } catch {}
         sendResponse && sendResponse({ ok: true });
       } else if (message.action === 'previewHindiVoice') {
         try {

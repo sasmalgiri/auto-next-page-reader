@@ -772,26 +772,10 @@ function _updateTranslateUI() {
   const notice = document.getElementById('premiumNotice');
   if (btn) btn.textContent = translateEnabled ? 'Hindi Translation ON' : 'Hindi Translation OFF';
   if (ctrl) ctrl.style.display = translateEnabled ? 'block' : 'none';
-  if (notice) notice.style.display = (translateEnabled && !premiumActive) ? 'block' : 'none';
+  if (notice) notice.style.display = 'none';
 }
 
 document.getElementById('toggleTranslate')?.addEventListener('click', async () => {
-  if (!premiumActive) {
-    // Check for Gumroad-validated premium key
-    const sd = await chrome.storage.sync.get(['premiumKey', 'premiumValidatedAt']);
-    if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) {
-      premiumActive = true;
-      chrome.storage.local.set({ premiumActive: true });
-    } else {
-      updateStatus('Premium feature — buy a license key and activate in Options page.');
-      _updateTranslateUI();
-      const ctrl = document.getElementById('translateControls');
-      const notice = document.getElementById('premiumNotice');
-      if (ctrl) ctrl.style.display = 'block';
-      if (notice) notice.style.display = 'block';
-      return;
-    }
-  }
   translateEnabled = !translateEnabled;
   chrome.storage.local.set({ translateEnabled });
   try { await sendMessageToTab('toggleTranslate', { translateEnabled }); } catch (e) { console.debug('toggleTranslate send failed:', e); }

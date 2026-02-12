@@ -258,35 +258,11 @@ function anprSpeakNext() {
 
   const s = __anprSpeechState.chunks[__anprSpeechState.idx];
 
-  // If Hindi translation is enabled and premium is active, translate before speaking
-  if (__anprTranslateEnabled && __anprPremiumActive && typeof anprTranslateChunk === 'function') {
-    _anprSpeakWithTranslation(s);
-    return;
-  }
+  // Hindi voice is pre-selected during chapter start if translation is enabled
+  const hindiVoice = (__anprTranslateEnabled && __anprSpeechState._hindiVoice) ? __anprSpeechState._hindiVoice : null;
+  const hindiLang = hindiVoice ? 'hi-IN' : null;
 
-  _anprSpeakChunk(s);
-}
-
-// Internal: speak a chunk after optional translation
-async function _anprSpeakWithTranslation(originalText) {
-  try {
-    const translated = await anprTranslateChunk(originalText);
-    let textToSpeak = originalText;
-    let hindiVoice = null;
-    let langOverride = null;
-
-    if (translated && translated !== originalText) {
-      textToSpeak = (typeof anprHindiPostProcess === 'function') ? anprHindiPostProcess(translated) : translated;
-      hindiVoice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(__anprHindiVoiceGender) : null;
-      langOverride = 'hi-IN';
-    }
-
-    if (__anprSpeechState.cancel) return;
-    _anprSpeakChunk(textToSpeak, hindiVoice, langOverride);
-  } catch (e) {
-    console.warn('[ANPR][Translate] Translation error, falling back to original:', e);
-    if (!__anprSpeechState.cancel) _anprSpeakChunk(originalText);
-  }
+  _anprSpeakChunk(s, hindiVoice, hindiLang);
 }
 
 function _anprSpeakChunk(s, forceVoice, forceLang) {
@@ -554,7 +530,7 @@ function anprStopFlowWatchdog() { try { if (__anprFlowWatchdog) { clearInterval(
 
 // ---------- Chapter reader start/stop ----------
 
-function startChapterReader(opts = {}) {
+async function startChapterReader(opts = {}) {
   if (__anprAdvanceLock) { return; }
   if (__anprSpeechState.reading) {
     console.debug('[ANPR] Duplicate start ignored; already reading.');
@@ -563,6 +539,7 @@ function startChapterReader(opts = {}) {
   try { anprInstrumentedCancel('chapter-start'); } catch {}
   __anprSpeechState.cancel = false;
   __anprSpeechState.reading = true;
+  __anprSpeechState._hindiVoice = null; // reset Hindi voice
   anprStartFlowWatchdog();
   try { isReading = true; } catch {}
   __anprSpeechState.rate = typeof opts.rate === 'number' ? opts.rate : ttsRate;
@@ -595,16 +572,64 @@ function startChapterReader(opts = {}) {
         if (parts.length) {
           __anprSpeechState.chunks = parts;
           __anprSpeechState.idx = 0;
-          anprSpeakNext();
-          return;
         }
       }
     } catch {}
-    updateStatus('Waiting for readable content…');
-    startAutoStartRetryLoop('chapter-empty');
-    anprObserveContentUntilReady();
-    return;
+    if (!__anprSpeechState.chunks || __anprSpeechState.chunks.length === 0) {
+      updateStatus('Waiting for readable content\u2026');
+      startAutoStartRetryLoop('chapter-empty');
+      anprObserveContentUntilReady();
+      return;
+    }
   }
+
+  // --- Hindi Translation: translate full chapter upfront ---
+  if (__anprTranslateEnabled && typeof anprTranslateFullChapter === 'function') {
+    try {
+      // Ensure voices are loaded before picking
+      if (typeof anprEnsureVoicesLoaded === 'function') {
+        await anprEnsureVoicesLoaded();
+      }
+      // Pre-select Hindi voice
+      const hindiVoice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(__anprHindiVoiceGender) : null;
+      __anprSpeechState._hindiVoice = hindiVoice;
+      if (hindiVoice) {
+        console.debug('[ANPR][Translate] Hindi voice ready:', hindiVoice.name, 'gender:', __anprHindiVoiceGender);
+      } else {
+        console.warn('[ANPR][Translate] No Hindi voice found, will use default');
+      }
+
+      // Translate all paragraphs
+      const originalParas = __anprSpeechState.chunks.slice();
+      const translatedParas = await anprTranslateFullChapter(originalParas);
+
+      if (__anprSpeechState.cancel) return; // user stopped during translation
+
+      // Apply literary post-processing to the full chapter
+      const processed = (typeof anprHindiPostProcessAll === 'function')
+        ? anprHindiPostProcessAll(translatedParas)
+        : translatedParas;
+
+      // Re-chunk the translated text for TTS (Hindi text can be longer)
+      const hindiChunks = [];
+      for (const para of processed) {
+        if (!para || !para.trim()) continue;
+        const splits = anprSplitChunks(para, 200);
+        hindiChunks.push(...splits);
+      }
+
+      if (hindiChunks.length > 0) {
+        __anprSpeechState.chunks = anprNormalizeChunks(hindiChunks, { maxLen: 240, minMergeLen: 40, hardSplitLen: 600 });
+        __anprSpeechState.idx = 0;
+        console.debug('[ANPR][Translate] Full chapter translated:', __anprSpeechState.chunks.length, 'chunks');
+      }
+    } catch (e) {
+      console.warn('[ANPR][Translate] Full chapter translation failed, reading in English:', e);
+      updateStatus('Translation failed, reading in English...');
+      __anprSpeechState._hindiVoice = null;
+    }
+  }
+
   anprSpeakNext();
 }
 
