@@ -278,6 +278,14 @@ if (!window.__AutoNextReaderMsgBound) {
         }
         sendResponse({ autoScrollWhileReading });
       } else if (message.action === 'startSpeech') {
+        // Prime speech engine synchronously while user-gesture token is valid.
+        // Async translation will cause the gesture to expire → "not-allowed" errors.
+        try {
+          window.speechSynthesis.cancel();
+          const primer = new SpeechSynthesisUtterance('\u200B');
+          primer.volume = 0; primer.rate = 10;
+          window.speechSynthesis.speak(primer);
+        } catch (pe) { console.debug('[ANPR] Speech primer failed:', pe); }
         (async () => {
           if (__ANPR_MODE__ === 'infinite') {
             const paras = collectInfiniteParagraphs();

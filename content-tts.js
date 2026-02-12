@@ -586,6 +586,18 @@ async function startChapterReader(opts = {}) {
   // --- Hindi Translation: translate full chapter upfront ---
   if (__anprTranslateEnabled && typeof anprTranslateFullChapter === 'function') {
     try {
+      // IMPORTANT: Prime the speech engine NOW while user gesture is still valid.
+      // Async translation will cause the gesture to expire, resulting in "not-allowed" errors.
+      try {
+        const primer = new SpeechSynthesisUtterance('\u200B'); // zero-width space
+        primer.volume = 0;
+        primer.rate = 10; // finish instantly
+        window.speechSynthesis.speak(primer);
+        console.debug('[ANPR][Translate] Speech engine primed for user gesture policy');
+      } catch (pe) {
+        console.debug('[ANPR][Translate] Primer failed (non-fatal):', pe);
+      }
+
       // Ensure voices are loaded before picking
       if (typeof anprEnsureVoicesLoaded === 'function') {
         await anprEnsureVoicesLoaded();
@@ -601,6 +613,7 @@ async function startChapterReader(opts = {}) {
 
       // Translate all paragraphs
       const originalParas = __anprSpeechState.chunks.slice();
+      updateStatus('Translating chapter to Hindi... Please wait.');
       const translatedParas = await anprTranslateFullChapter(originalParas);
 
       if (__anprSpeechState.cancel) return; // user stopped during translation
