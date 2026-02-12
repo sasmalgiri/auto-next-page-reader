@@ -328,6 +328,15 @@ function anprCollectParagraphsForCurrentSite(container) {
 function anprBuildFromDOM() {
   __anprSpeechState.container = anprPickContentContainer();
   const paras = anprCollectParagraphsForCurrentSite(__anprSpeechState.container);
-  __anprSpeechState.chunks = paras;
+
+  // Skip header/title lines: find first paragraph containing "chapter" and start from the line after it
+  let startIdx = 0;
+  for (let i = 0; i < paras.length; i++) {
+    if (/chapter/i.test(paras[i])) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+  __anprSpeechState.chunks = startIdx < paras.length ? paras.slice(startIdx) : paras;
   __anprSpeechState.idx = 0;
 }

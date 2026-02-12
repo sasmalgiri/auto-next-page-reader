@@ -713,24 +713,13 @@ function startSpeech(text, rate = null, pitch = null, opts = {}) {
       window.speechSynthesis.speak(utterance);
       isReading = true; userStoppedReading = false; if (autoScrollWhileReading) startAutoScroll();
     } else {
-      // Chapter mode
+      // Chapter mode — always use startChapterReader for proper Hindi translation support
       userStoppedReading = false;
       const opts2 = { rate: (typeof rate === 'number' ? rate : ttsRate), pitch: (typeof pitch === 'number' ? pitch : ttsPitch) };
       try { __anprReadingLock = true; window.speechSynthesis.cancel(); } catch {}
-      __anprSpeechState.cancel = false; __anprSpeechState.reading = true; isReading = true;
-      __anprSpeechState.rate = opts2.rate; __anprSpeechState.pitch = opts2.pitch;
-      anprStartFlowWatchdog();
-      try { __anprSpeechState.voice = null; } catch {}
-      __anprSpeechState.container = anprPickContentContainer();
-      const provided = (typeof text === 'string' ? text.trim() : '');
-      if (provided && provided.length > 120) {
-        const parts = provided.includes('\n\n') ? provided.split(/\n{2,}/).map(s=>s.trim()).filter(Boolean) : anprSplitChunks(provided, 220);
-        __anprSpeechState.chunks = parts; __anprSpeechState.idx = 0;
-        __anprSpeakAttempts = 0; __anprConsecutiveSpeakErrors = 0; __anprSuccessfulUtterances = 0; __anprErrorRecoveryAttempts = 0;
-        anprSpeakNext();
-      } else {
-        startChapterReader(opts2);
-      }
+      // Reset state so startChapterReader doesn't think we're already reading
+      __anprSpeechState.cancel = false; __anprSpeechState.reading = false; isReading = false;
+      startChapterReader(opts2);
     }
   } catch (error) {
     console.error('Error during speech synthesis:', error);
