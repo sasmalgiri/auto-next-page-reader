@@ -329,14 +329,48 @@ function anprBuildFromDOM() {
   __anprSpeechState.container = anprPickContentContainer();
   const paras = anprCollectParagraphsForCurrentSite(__anprSpeechState.container);
 
-  // Skip header/title lines: find first paragraph containing "chapter" and start from the line after it
+  // Skip to content after "chapter" keyword — search both paragraphs AND headings in the DOM
   let startIdx = 0;
+
+  // First check: does any collected paragraph contain "chapter"?
   for (let i = 0; i < paras.length; i++) {
     if (/chapter/i.test(paras[i])) {
       startIdx = i + 1;
       break;
     }
   }
-  __anprSpeechState.chunks = startIdx < paras.length ? paras.slice(startIdx) : paras;
+
+  // Second check: if not found in paragraphs, scan all headings/elements in container
+  // The "Chapter X" text is often in an h1/h2/h3/span that isn't collected as a paragraph
+  if (startIdx === 0 && __anprSpeechState.container) {
+    try {
+      const allElements = __anprSpeechState.container.querySelectorAll('h1, h2, h3, h4, h5, span, div, p, a');
+      let chapterFound = false;
+      const chapterEl = Array.from(allElements).find(el => /chapter/i.test(el.textContent || ''));
+      if (chapterEl) {
+        chapterFound = true;
+        // Find the first paragraph that appears AFTER the chapter heading in the DOM
+        const containerText = __anprSpeechState.container.innerText || '';
+        const chapterText = (chapterEl.textContent || '').trim();
+        const chapterPos = containerText.toLowerCase().indexOf(chapterText.toLowerCase());
+        if (chapterPos >= 0) {
+          // Find which paragraph index corresponds to text after the chapter heading
+          let textSoFar = '';
+          for (let i = 0; i < paras.length; i++) {
+            const paraPos = containerText.indexOf(paras[i], textSoFar.length);
+            if (paraPos > chapterPos) {
+              startIdx = i;
+              break;
+            }
+            textSoFar = containerText.slice(0, paraPos + paras[i].length);
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('[ANPR] Chapter heading scan failed:', e);
+    }
+  }
+
+  __anprSpeechState.chunks = startIdx > 0 && startIdx < paras.length ? paras.slice(startIdx) : paras;
   __anprSpeechState.idx = 0;
 }
