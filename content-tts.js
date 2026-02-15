@@ -399,7 +399,10 @@ function _anprSpeakChunkCloud(text, lang) {
 // ---------- Browser chrome.tts playback (free) ----------
 
 function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
-  const voiceName = forceVoice ? (forceVoice.name || forceVoice.voiceName || null) : null;
+  // For Hindi: don't pass speechSynthesis voiceName — it doesn't match chrome.tts names.
+  // Let background pick the right voice (Madhur/Swara) based on gender parameter.
+  const isHindi = forceLang && forceLang.startsWith('hi');
+  const voiceName = (!isHindi && forceVoice) ? (forceVoice.name || forceVoice.voiceName || null) : null;
   const tuned = __anprTuneProsody(s, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
 
   // Store callbacks so the anprTtsEvent message listener can dispatch to them
@@ -467,7 +470,8 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
       rate: tuned.rate,
       pitch: tuned.pitch,
       volume: 1.0,
-      voiceName: voiceName || undefined
+      voiceName: voiceName || undefined,
+      gender: __anprHindiVoiceGender || 'male'
     }, (resp) => {
       if (chrome.runtime.lastError || (resp && !resp.ok)) {
         console.warn('[ANPR][TTS] Background speak failed:', chrome.runtime.lastError?.message || resp?.error);

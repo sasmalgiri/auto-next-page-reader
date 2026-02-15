@@ -74,13 +74,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   dynamicProsody = typeof data.dynamicProsody === 'boolean' ? data.dynamicProsody : true;
   dialogueAlternate = typeof data.dialogueAlternate === 'boolean' ? data.dialogueAlternate : false;
   instantStartEnabled = typeof data.instantStartEnabled === 'boolean' ? data.instantStartEnabled : false;
-  translateEnabled = true; // Hindi-only: always on
-  hindiVoiceGender = 'male'; // Hindi-only: always male
+  translateEnabled = typeof data.translateEnabled === 'boolean' ? data.translateEnabled : true;
+  hindiVoiceGender = typeof data.hindiVoiceGender === 'string' ? data.hindiVoiceGender : 'male';
   premiumActive = true;
 
-  // Hindi-only: force save translate settings so content scripts always use Hindi male
-  chrome.storage.local.set({ translateEnabled: true, hindiVoiceGender: 'male', premiumActive: true });
+  chrome.storage.local.set({ translateEnabled, hindiVoiceGender, premiumActive: true });
   _updateTranslateUI();
+  _updateLanguageUI();
 
   // Load Gemini API key
   chrome.storage.local.get(['geminiApiKey'], (gd) => {
@@ -98,10 +98,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Update UI based on the stored state
     if (isSpeaking) {
-      updateStatus('Reading in Hindi (male voice)...');
+      const lang = translateEnabled ? 'Hindi' : 'English';
+      const voice = translateEnabled ? ` (${hindiVoiceGender} voice)` : '';
+      updateStatus(`Reading in ${lang}${voice}...`);
       toggleControls('start');
     } else {
-      updateStatus('Ready — Hindi male voice');
+      const lang = translateEnabled ? 'Hindi' : 'English';
+      const voice = translateEnabled ? ` ${hindiVoiceGender} voice` : '';
+      updateStatus(`Ready — ${lang}${voice}`);
       toggleControls('stop');
     }
     document.getElementById('toggle').innerText = autoNextEnabled ? "Auto Next ON" : "Auto Next OFF";
@@ -786,6 +790,36 @@ function _updateTranslateUI() {
   if (ctrl) ctrl.style.display = translateEnabled ? 'block' : 'none';
   if (notice) notice.style.display = 'none';
 }
+
+function _updateLanguageUI() {
+  const langEl = document.getElementById('readingLanguage');
+  const hindiRow = document.getElementById('hindiVoiceRow');
+  const genderEl = document.getElementById('hindiVoiceGender');
+  if (langEl) langEl.value = translateEnabled ? 'hindi' : 'english';
+  if (hindiRow) hindiRow.style.display = translateEnabled ? '' : 'none';
+  if (genderEl) genderEl.value = hindiVoiceGender;
+}
+
+// Reading Language selector
+document.getElementById('readingLanguage')?.addEventListener('change', async (e) => {
+  const isHindi = e.target.value === 'hindi';
+  translateEnabled = isHindi;
+  chrome.storage.local.set({ translateEnabled });
+  _updateLanguageUI();
+  _updateTranslateUI();
+  try { await sendMessageToTab('toggleTranslate', { translateEnabled }); } catch (e2) { console.debug('toggleTranslate send failed:', e2); }
+  const lang = isHindi ? 'Hindi' : 'English';
+  const voice = isHindi ? ` (${hindiVoiceGender} voice)` : '';
+  updateStatus(`Reading language: ${lang}${voice}`);
+});
+
+// Hindi Voice Gender selector
+document.getElementById('hindiVoiceGender')?.addEventListener('change', async (e) => {
+  hindiVoiceGender = e.target.value || 'male';
+  chrome.storage.local.set({ hindiVoiceGender });
+  try { await sendMessageToTab('setHindiVoiceGender', { hindiVoiceGender }); } catch (e2) { console.debug('setHindiVoiceGender failed:', e2); }
+  updateStatus(`Hindi voice: ${hindiVoiceGender}`);
+});
 
 document.getElementById('toggleTranslate')?.addEventListener('click', async () => {
   translateEnabled = !translateEnabled;

@@ -62,21 +62,105 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } catch {}
         }
       };
-      if (msg.voiceName) opts.voiceName = msg.voiceName;
-      try {
-        chrome.tts.speak(msg.text || '', opts, () => {
-          if (chrome.runtime.lastError) {
-            console.warn('[ANPR BG] TTS error:', chrome.runtime.lastError.message);
-            try {
-              chrome.tabs.sendMessage(tabId, {
-                type: 'anprTtsEvent', eventType: 'error',
-                errorMessage: chrome.runtime.lastError.message
-              });
-            } catch {}
+      // For Hindi: ALWAYS let background pick the voice — ignore any voiceName from content script
+      const isHindiLang = (opts.lang || '').toLowerCase().startsWith('hi');
+      if (!isHindiLang && msg.voiceName) opts.voiceName = msg.voiceName;
+
+      const doSpeak = (finalOpts) => {
+        console.log('[ANPR BG] doSpeak called with voiceName:', finalOpts.voiceName, 'lang:', finalOpts.lang);
+        try {
+          chrome.tts.speak(msg.text || '', finalOpts, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('[ANPR BG] TTS error:', chrome.runtime.lastError.message);
+              try {
+                chrome.tabs.sendMessage(tabId, {
+                  type: 'anprTtsEvent', eventType: 'error',
+                  errorMessage: chrome.runtime.lastError.message
+                });
+              } catch {}
+            }
+          });
+          sendResponse({ ok: true });
+        } catch (e) { sendResponse({ ok: false, error: String(e) }); }
+      };
+
+      if (isHindiLang) {
+        // ALWAYS select Hindi voice for Hindi content — search ALL voices for Madhur/Swara
+        const gender = msg.gender || 'male';
+        chrome.tts.getVoices((voices) => {
+          const allVoices = voices || [];
+          console.log('[ANPR BG] === ALL AVAILABLE VOICES ===');
+          allVoices.forEach((v, i) => {
+            console.log(`[ANPR BG] Voice[${i}]: name="${v.voiceName}" lang="${v.lang}" remote=${v.remote}`);
+          });
+
+          // Step 1: Search ALL voices for "madhur" or "swara" by name (regardless of lang)
+          const preferredName = gender === 'male' ? 'madhur' : 'swara';
+          const exactMatch = allVoices.find(v => (v.voiceName || '').toLowerCase().includes(preferredName));
+          if (exactMatch) {
+            opts.voiceName = exactMatch.voiceName;
+            console.log('[ANPR BG] Found preferred voice by name:', opts.voiceName);
+            doSpeak(opts);
+            return;
           }
+
+          // Step 2: Search Hindi-filtered voices with gender scoring
+          const hindiVoices = allVoices.filter(v => {
+            const lang = (v.lang || '').toLowerCase().replace('_', '-');
+            return lang.startsWith('hi') || lang === 'hi-in';
+          });
+          console.log('[ANPR BG] Hindi voices found:', hindiVoices.length, hindiVoices.map(v => v.voiceName));
+
+          if (hindiVoices.length > 0) {
+            const scored = hindiVoices.map(v => {
+              let score = 0;
+              const name = (v.voiceName || '').toLowerCase();
+              const isFemale = /swara|female|woman|neerja|sapna/i.test(name);
+              const isMale = /madhur|male|man|hemant|kalpesh/i.test(name);
+              if (gender === 'male') {
+                if (isMale) score += 15;
+                else if (isFemale) score -= 10;
+              } else {
+                if (isFemale) score += 15;
+                else if (isMale) score -= 10;
+              }
+              if (/natural|neural|premium/i.test(name)) score += 5;
+              return { voice: v, score };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            if (scored[0]) {
+              opts.voiceName = scored[0].voice.voiceName;
+              console.log('[ANPR BG] Hindi voice by scoring:', opts.voiceName, 'score:', scored[0].score);
+            }
+            doSpeak(opts);
+            return;
+          }
+
+          // Step 3: No Hindi voices found in chrome.tts — try hardcoded known Windows voice names
+          const knownNames = gender === 'male'
+            ? ['Microsoft Madhur Online (Natural) - Hindi (India)', 'Microsoft Madhur - Hindi (India)', 'Madhur']
+            : ['Microsoft Swara Online (Natural) - Hindi (India)', 'Microsoft Swara - Hindi (India)', 'Swara'];
+          for (const knownName of knownNames) {
+            const found = allVoices.find(v => v.voiceName === knownName);
+            if (found) {
+              opts.voiceName = found.voiceName;
+              console.log('[ANPR BG] Using hardcoded voice name:', opts.voiceName);
+              doSpeak(opts);
+              return;
+            }
+          }
+
+          // Step 4: Last resort — just set the known name and hope chrome.tts knows it
+          const fallbackName = gender === 'male'
+            ? 'Microsoft Madhur Online (Natural) - Hindi (India)'
+            : 'Microsoft Swara Online (Natural) - Hindi (India)';
+          opts.voiceName = fallbackName;
+          console.warn('[ANPR BG] No Hindi voice found! Trying fallback name:', fallbackName);
+          doSpeak(opts);
         });
-        sendResponse({ ok: true });
-      } catch (e) { sendResponse({ ok: false, error: String(e) }); }
+      } else {
+        doSpeak(opts);
+      }
       return true;
     }
     if (msg && msg.type === 'anprTtsStop') {
@@ -277,5 +361,32 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
   }
 });
 
-chrome.runtime.onStartup?.addListener(() => { loadSessions(); });
-chrome.runtime.onInstalled?.addListener(() => { loadSessions(); });
+chrome.runtime.onStartup?.addListener(() => {
+  loadSessions();
+  // Diagnostic: log all available TTS voices on startup
+  try {
+    chrome.tts.getVoices((voices) => {
+      console.log('[ANPR BG] === STARTUP: ALL TTS VOICES ===');
+      (voices || []).forEach((v, i) => {
+        console.log(`[ANPR BG] Voice[${i}]: name="${v.voiceName}" lang="${v.lang}" remote=${v.remote}`);
+      });
+      const hindiVoices = (voices || []).filter(v => (v.voiceName || '').toLowerCase().includes('hindi') || (v.lang || '').toLowerCase().startsWith('hi'));
+      console.log('[ANPR BG] Hindi voices:', hindiVoices.map(v => v.voiceName));
+      const madhur = (voices || []).find(v => (v.voiceName || '').toLowerCase().includes('madhur'));
+      console.log('[ANPR BG] Madhur voice:', madhur ? madhur.voiceName : 'NOT FOUND');
+    });
+  } catch {}
+});
+chrome.runtime.onInstalled?.addListener(() => {
+  loadSessions();
+  try {
+    chrome.tts.getVoices((voices) => {
+      console.log('[ANPR BG] === INSTALLED: ALL TTS VOICES ===');
+      (voices || []).forEach((v, i) => {
+        console.log(`[ANPR BG] Voice[${i}]: name="${v.voiceName}" lang="${v.lang}" remote=${v.remote}`);
+      });
+      const madhur = (voices || []).find(v => (v.voiceName || '').toLowerCase().includes('madhur'));
+      console.log('[ANPR BG] Madhur voice:', madhur ? madhur.voiceName : 'NOT FOUND');
+    });
+  } catch {}
+});

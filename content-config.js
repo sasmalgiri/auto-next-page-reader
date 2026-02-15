@@ -390,11 +390,12 @@ if (!window.__AutoNextReaderInitialized) {
       if (typeof data.naturalPreset === 'boolean') __anprNaturalPreset = data.naturalPreset;
       if (typeof data.dynamicProsody === 'boolean') __anprDynamicProsody = data.dynamicProsody;
     });
-    // Hindi-only: always force translate=true, gender=male, premium=true
-    // Don't read these from storage — prevents stale values from original extension
-    __anprTranslateEnabled = true;
-    __anprHindiVoiceGender = 'male';
+    // Load translate/voice settings from storage (user can toggle Hindi/English and male/female)
     __anprPremiumActive = true;
+    chrome.storage?.local.get(['translateEnabled', 'hindiVoiceGender'], (td) => {
+      if (typeof td.translateEnabled === 'boolean') __anprTranslateEnabled = td.translateEnabled;
+      if (typeof td.hindiVoiceGender === 'string') __anprHindiVoiceGender = td.hindiVoiceGender;
+    });
     chrome.storage?.sync?.get(['translateApiKey', 'premiumKey', 'premiumValidatedAt'], (sd) => {
       if (typeof sd.translateApiKey === 'string' && sd.translateApiKey) __anprTranslateApiKey = sd.translateApiKey;
       if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) __anprPremiumActive = true;

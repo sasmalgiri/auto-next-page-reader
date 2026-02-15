@@ -17,7 +17,7 @@
   <main class="popup-container">
     <button id="start" class="control-btn primary">
       <i>▶</i>
-      Start Reading (Hindi)
+      Start Reading
     </button>
 
     <button id="stop" class="control-btn danger" disabled>
@@ -45,8 +45,25 @@
       Auto Scroll OFF
     </button>
 
+    <!-- Language & Voice Controls -->
+    <section class="tts-controls" style="margin-top:4px;">
+      <div class="control-row">
+        <label for="readingLanguage" style="font-size:11px;">Reading Language</label>
+        <select id="readingLanguage" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
+          <option value="hindi">Hindi (Translate & Read)</option>
+          <option value="english">English (Original)</option>
+        </select>
+      </div>
+      <div class="control-row" id="hindiVoiceRow">
+        <label for="hindiVoiceGender" style="font-size:11px;">Hindi Voice Gender</label>
+        <select id="hindiVoiceGender" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
+          <option value="male">Male (Madhur)</option>
+          <option value="female">Female (Swara)</option>
+        </select>
+      </div>
+    </section>
+
     <!-- Hidden elements needed by popup.js (kept so JS doesn't error) -->
-    <select id="hindiVoiceGender" style="display:none;"><option value="male" selected>Male</option></select>
     <button id="toggleTranslate" style="display:none;">Hindi Translation ON</button>
     <div id="translateControls" style="display:none;"></div>
     <div id="premiumNotice" style="display:none;"></div>
@@ -134,7 +151,7 @@
     </button>
 
     <div class="status-container">
-      <div id="status" class="status-message">Ready — Hindi male voice only</div>
+      <div id="status" class="status-message">Ready — Hindi male voice</div>
     </div>
   </main>
 

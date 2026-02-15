@@ -436,11 +436,10 @@ if (!window.__AutoNextReaderMsgBound) {
           }
           const sample = '\u092F\u0939 \u090F\u0915 \u0939\u093F\u0902\u0926\u0940 \u0906\u0935\u093E\u091C\u093C \u0915\u093E \u0928\u092E\u0942\u0928\u093E \u0939\u0948\u0964';
           const gender = message.hindiVoiceGender || __anprHindiVoiceGender || 'male';
-          const voice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(gender) : null;
           chrome.runtime.sendMessage({
             type: 'anprTtsSpeak', text: sample, lang: 'hi-IN',
             rate: ttsRate || 0.9, pitch: ttsPitch || 1.0, volume: 1.0,
-            voiceName: voice ? voice.name : undefined
+            gender: gender
           });
           sendResponse && sendResponse({ ok: true });
           return true;
