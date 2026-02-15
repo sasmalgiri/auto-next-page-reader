@@ -29,9 +29,9 @@ let naturalPreset = true;
 let dynamicProsody = true;
 let dialogueAlternate = false;
 let instantStartEnabled = false; // New flag for instant start on popup open
-let translateEnabled = false;
-let hindiVoiceGender = 'female';
-let premiumActive = true; // DEV: true for testing
+let translateEnabled = true; // Hindi-only: always on
+let hindiVoiceGender = 'male'; // Hindi-only: male voice
+let premiumActive = true;
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
@@ -71,24 +71,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   dynamicProsody = typeof data.dynamicProsody === 'boolean' ? data.dynamicProsody : true;
   dialogueAlternate = typeof data.dialogueAlternate === 'boolean' ? data.dialogueAlternate : false;
   instantStartEnabled = typeof data.instantStartEnabled === 'boolean' ? data.instantStartEnabled : false;
-  translateEnabled = typeof data.translateEnabled === 'boolean' ? data.translateEnabled : false;
-  hindiVoiceGender = typeof data.hindiVoiceGender === 'string' ? data.hindiVoiceGender : 'female';
-  premiumActive = typeof data.premiumActive === 'boolean' ? data.premiumActive : false;
+  translateEnabled = true; // Hindi-only: always on
+  hindiVoiceGender = 'male'; // Hindi-only: always male
+  premiumActive = true;
 
-  // Check sync storage for Gumroad-validated premium key
-  chrome.storage.sync.get(['premiumKey', 'premiumValidatedAt'], (sd) => {
-    if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) {
-      premiumActive = true;
-    }
-    _updateTranslateUI();
+  // Hindi-only: force save translate settings so content scripts always use Hindi male
+  chrome.storage.local.set({ translateEnabled: true, hindiVoiceGender: 'male', premiumActive: true });
+  _updateTranslateUI();
+
+  // Load Gemini API key
+  chrome.storage.local.get(['geminiApiKey'], (gd) => {
+    const keyEl = document.getElementById('geminiApiKey');
+    if (keyEl && gd.geminiApiKey) keyEl.value = gd.geminiApiKey;
   });
 
     // Update UI based on the stored state
     if (isSpeaking) {
-      updateStatus('Reading in progress...');
+      updateStatus('Reading in Hindi (male voice)...');
       toggleControls('start');
     } else {
-      updateStatus('Ready to start...');
+      updateStatus('Ready — Hindi male voice');
       toggleControls('stop');
     }
     document.getElementById('toggle').innerText = autoNextEnabled ? "Auto Next ON" : "Auto Next OFF";
@@ -552,12 +554,11 @@ chrome.storage.sync.get(['supportUrl'], (data) => {
     supportUrlCache = data.supportUrl;
   }
 });
-document.getElementById('support').addEventListener('click', () => {
+document.getElementById('support')?.addEventListener('click', () => {
   const url = supportUrlCache;
   if (url && /^https?:\/\//i.test(url)) {
     chrome.tabs.create({ url });
   } else {
-    // If not configured, open the options page to set it up
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
     } else {
@@ -797,6 +798,15 @@ document.getElementById('previewHindi')?.addEventListener('click', async () => {
     console.debug('Hindi preview failed:', e);
     updateStatus('Hindi preview failed. Make sure Hindi voices are installed.');
   }
+});
+
+// ---------- Gemini API Key ----------
+document.getElementById('geminiApiKey')?.addEventListener('change', (e) => {
+  const key = (e.target.value || '').trim();
+  chrome.storage.local.set({ geminiApiKey: key });
+  // Also push to content script immediately
+  try { sendMessageToTab('setGeminiApiKey', { geminiApiKey: key }); } catch {}
+  updateStatus(key ? 'Gemini API key saved. Will use Gemini for translation.' : 'Gemini key cleared. Using Google Translate (free).');
 });
 
 // Enable/disable buttons based on the current state

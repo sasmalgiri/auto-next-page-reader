@@ -40,6 +40,55 @@ async function loadSessions() {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   try {
+    // --- chrome.tts speech routing (no user gesture needed) ---
+    if (msg && msg.type === 'anprTtsSpeak') {
+      const tabId = sender?.tab?.id;
+      if (typeof tabId !== 'number') { sendResponse({ ok: false }); return true; }
+      try { chrome.tts.stop(); } catch {}
+      const opts = {
+        lang: msg.lang || 'hi-IN',
+        rate: typeof msg.rate === 'number' ? msg.rate : 0.8,
+        pitch: typeof msg.pitch === 'number' ? msg.pitch : 1.0,
+        volume: typeof msg.volume === 'number' ? msg.volume : 1.0,
+        enqueue: false,
+        onEvent: (event) => {
+          try {
+            chrome.tabs.sendMessage(tabId, {
+              type: 'anprTtsEvent',
+              eventType: event.type,
+              charIndex: event.charIndex || 0,
+              errorMessage: event.errorMessage || null
+            });
+          } catch {}
+        }
+      };
+      if (msg.voiceName) opts.voiceName = msg.voiceName;
+      try {
+        chrome.tts.speak(msg.text || '', opts, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('[ANPR BG] TTS error:', chrome.runtime.lastError.message);
+            try {
+              chrome.tabs.sendMessage(tabId, {
+                type: 'anprTtsEvent', eventType: 'error',
+                errorMessage: chrome.runtime.lastError.message
+              });
+            } catch {}
+          }
+        });
+        sendResponse({ ok: true });
+      } catch (e) { sendResponse({ ok: false, error: String(e) }); }
+      return true;
+    }
+    if (msg && msg.type === 'anprTtsStop') {
+      try { chrome.tts.stop(); } catch {}
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === 'anprTtsGetVoices') {
+      chrome.tts.getVoices((voices) => { sendResponse({ voices: voices || [] }); });
+      return true;
+    }
+
     if (msg && msg.type === 'anprHandshake') {
       // Provide tabId back to content script for session registration
       if (sender && typeof sender.tab?.id === 'number') {

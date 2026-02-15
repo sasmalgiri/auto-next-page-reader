@@ -280,15 +280,20 @@ if (typeof overlayRoot === 'undefined') {
 }
 
 // Translation feature globals (premium)
-if (typeof __anprTranslateEnabled === 'undefined') { var __anprTranslateEnabled = false; }
+if (typeof __anprTranslateEnabled === 'undefined') { var __anprTranslateEnabled = true; } // Hindi-only: always on
 if (typeof __anprTranslateApiKey === 'undefined') { var __anprTranslateApiKey = null; }
-if (typeof __anprHindiVoiceGender === 'undefined') { var __anprHindiVoiceGender = 'female'; }
+if (typeof __anprHindiVoiceGender === 'undefined') { var __anprHindiVoiceGender = 'male'; } // Hindi-only: male voice
 if (typeof __anprHindiVoiceURI === 'undefined') { var __anprHindiVoiceURI = null; }
 if (typeof __anprPremiumActive === 'undefined') { var __anprPremiumActive = true; } // DEV: true for testing
 
 // Flow watchdog state
 if (typeof __anprLastUtteranceTs === 'undefined') { var __anprLastUtteranceTs = 0; }
 if (typeof __anprFlowWatchdog === 'undefined') { var __anprFlowWatchdog = null; }
+
+// chrome.tts routing: track whether background is currently speaking
+if (typeof __anprChromeTtsSpeaking === 'undefined') { var __anprChromeTtsSpeaking = false; }
+// Store current TTS event callbacks so anprTtsEvent messages can dispatch to them
+if (typeof __anprCurrentTtsCallbacks === 'undefined') { var __anprCurrentTtsCallbacks = null; }
 
 // ---------- Low-level utility functions ----------
 
@@ -298,12 +303,16 @@ function anprInstrumentedCancel(reason) {
       t: Date.now(),
       reason,
       idx: __anprSpeechState && __anprSpeechState.idx,
-      speaking: !!(speechSynthesis && speechSynthesis.speaking),
-      pending: !!(speechSynthesis && speechSynthesis.pending)
+      speaking: __anprChromeTtsSpeaking,
+      pending: false
     });
     if (__anprDebugLogging) console.debug('[ANPR][INST] cancel()', reason, __anprCancelEvents[__anprCancelEvents.length - 1]);
   } catch {}
-  try { __anprReadingLock = true; speechSynthesis.cancel(); } catch {}
+  try { __anprReadingLock = true; } catch {}
+  // Stop chrome.tts in background
+  try { chrome.runtime.sendMessage({ type: 'anprTtsStop' }); } catch {}
+  __anprChromeTtsSpeaking = false;
+  __anprCurrentTtsCallbacks = null;
   setTimeout(() => { __anprReadingLock = false; }, 140);
 }
 
@@ -373,13 +382,11 @@ if (!window.__AutoNextReaderInitialized) {
       if (typeof data.naturalPreset === 'boolean') __anprNaturalPreset = data.naturalPreset;
       if (typeof data.dynamicProsody === 'boolean') __anprDynamicProsody = data.dynamicProsody;
     });
-    // Load translation/premium settings
-    chrome.storage?.local.get(['translateEnabled', 'hindiVoiceGender', 'hindiVoiceURI', 'premiumActive'], (td) => {
-      if (typeof td.translateEnabled === 'boolean') __anprTranslateEnabled = td.translateEnabled;
-      if (typeof td.hindiVoiceGender === 'string') __anprHindiVoiceGender = td.hindiVoiceGender;
-      if (typeof td.hindiVoiceURI === 'string') __anprHindiVoiceURI = td.hindiVoiceURI;
-      if (typeof td.premiumActive === 'boolean') __anprPremiumActive = td.premiumActive;
-    });
+    // Hindi-only: always force translate=true, gender=male, premium=true
+    // Don't read these from storage — prevents stale values from original extension
+    __anprTranslateEnabled = true;
+    __anprHindiVoiceGender = 'male';
+    __anprPremiumActive = true;
     chrome.storage?.sync?.get(['translateApiKey', 'premiumKey', 'premiumValidatedAt'], (sd) => {
       if (typeof sd.translateApiKey === 'string' && sd.translateApiKey) __anprTranslateApiKey = sd.translateApiKey;
       if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) __anprPremiumActive = true;

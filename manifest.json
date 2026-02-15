@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "default_locale": "en",
-  "name": "__MSG_extName__",
-  "short_name": "__MSG_extShortName__",
-  "version": "2.7.3",
-  "description": "__MSG_extDesc__",
+  "name": "Auto Next Page Reader — Hindi",
+  "short_name": "ANPR Hindi",
+  "version": "2.9.0",
+  "description": "Read novels aloud in Hindi (male voice) with auto-next chapter.",
   "homepage_url": "https://github.com/sasmalgiri/auto-next-page-reader",
-  "permissions": ["activeTab", "storage", "scripting", "webNavigation"],
+  "permissions": ["activeTab", "storage", "scripting", "webNavigation", "tts"],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

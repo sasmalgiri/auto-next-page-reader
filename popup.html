@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Auto Next Page Reader</title>
+  <title>Auto Next Page Reader — Hindi</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <h2>
       <i>📖</i>
-  Auto Next Page Reader
+  Auto Next Page Reader — Hindi
     </h2>
   </header>
 
   <main class="popup-container">
     <button id="start" class="control-btn primary">
       <i>▶</i>
-      Start Reading
+      Start Reading (Hindi)
     </button>
 
     <button id="stop" class="control-btn danger" disabled>
@@ -45,73 +45,14 @@
       Auto Scroll OFF
     </button>
 
-    <section class="translate-section">
-      <button id="toggleTranslate" class="control-btn toggle">
-        Hindi Translation OFF
-      </button>
-      <div id="translateControls" class="translate-controls" style="display:none;">
-        <div class="control-row">
-          <label for="hindiVoiceGender">Hindi Voice</label>
-          <select id="hindiVoiceGender">
-            <option value="female" selected>Female (Swara)</option>
-            <option value="male">Male (Madhur)</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label>
-            <button id="previewHindi" class="control-btn preview-inline">Preview Hindi</button>
-          </label>
-        </div>
-        <div id="premiumNotice" class="premium-notice" style="display:none;">
-          Premium feature — buy a license and activate in Options.
-        </div>
-      </div>
-    </section>
+    <!-- Hidden elements needed by popup.js (kept so JS doesn't error) -->
+    <select id="hindiVoiceGender" style="display:none;"><option value="male" selected>Male</option></select>
+    <button id="toggleTranslate" style="display:none;">Hindi Translation ON</button>
+    <div id="translateControls" style="display:none;"></div>
+    <div id="premiumNotice" style="display:none;"></div>
+    <button id="previewHindi" style="display:none;"></button>
 
     <section class="tts-controls">
-      <div class="control-row">
-        <label for="voiceGender">Gender</label>
-        <select id="voiceGender">
-          <option value="auto" selected>Auto</option>
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-        </select>
-      </div>
-      <div class="control-row">
-        <label for="voice">Voice</label>
-        <select id="voice" disabled>
-          <option>Loading voices…</option>
-        </select>
-        <button id="previewVoice" class="control-btn preview-inline">Preview</button>
-      </div>
-      <div class="control-row">
-        <label for="activeVoice">Active voice</label>
-        <select id="activeVoice">
-          <option value="auto" selected>Auto</option>
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-        </select>
-      </div>
-      <div class="control-row">
-        <label>
-          <input id="preferNaturalVoices" type="checkbox" checked /> Prefer natural/online voices
-        </label>
-      </div>
-      <div class="control-row">
-        <label for="femaleVoice">Female favorite</label>
-        <select id="femaleVoice" disabled>
-          <option>Loading…</option>
-        </select>
-      </div>
-      <div class="control-row">
-        <label for="maleVoice">Male favorite</label>
-        <select id="maleVoice" disabled>
-          <option>Loading…</option>
-        </select>
-      </div>
-      <div class="control-row">
-        <button id="pickBestVoices" class="control-btn">Pick Best Voices</button>
-      </div>
       <div class="control-row">
         <label for="rate">Rate</label>
         <input id="rate" type="range" min="0.5" max="1.5" step="0.1" value="0.8" />
@@ -124,28 +65,33 @@
       </div>
       <div class="control-row">
         <label>
-          <input id="autoLang" type="checkbox" checked /> Auto-detect language
+          <input id="naturalPreset" type="checkbox" checked /> Natural preset
         </label>
       </div>
       <div class="control-row">
         <label>
-          <input id="naturalPreset" type="checkbox" checked /> Natural preset (rate/pitch tuning)
+          <input id="dynamicProsody" type="checkbox" checked /> Dynamic prosody
         </label>
       </div>
+    </section>
+
+    <!-- Hidden elements needed by popup.js -->
+    <select id="voiceGender" style="display:none;"><option value="male" selected>Male</option></select>
+    <select id="voice" style="display:none;"><option>default</option></select>
+    <select id="activeVoice" style="display:none;"><option value="male" selected>Male</option></select>
+    <select id="femaleVoice" style="display:none;"><option>none</option></select>
+    <select id="maleVoice" style="display:none;"><option>none</option></select>
+    <input id="preferNaturalVoices" type="checkbox" checked style="display:none;" />
+    <input id="autoLang" type="checkbox" style="display:none;" />
+    <input id="dialogueAlternate" type="checkbox" style="display:none;" />
+    <input id="instantStartEnabled" type="checkbox" style="display:none;" />
+    <button id="previewVoice" style="display:none;"></button>
+    <button id="pickBestVoices" style="display:none;"></button>
+
+    <section class="tts-controls" style="margin-top:8px;">
       <div class="control-row">
-        <label>
-          <input id="dynamicProsody" type="checkbox" checked /> Dynamic prosody (questions/dialogues)
-        </label>
-      </div>
-      <div class="control-row">
-        <label>
-          <input id="dialogueAlternate" type="checkbox" /> Alternate voices in dialogue
-        </label>
-      </div>
-      <div class="control-row">
-        <label>
-          <input id="instantStartEnabled" type="checkbox" /> Instant start on popup open
-        </label>
+        <label for="geminiApiKey" style="font-size:11px;">Gemini API Key <span style="opacity:0.6">(optional, for better translation)</span></label>
+        <input id="geminiApiKey" type="password" placeholder="Paste Gemini API key here" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;" />
       </div>
     </section>
 
@@ -154,13 +100,8 @@
       Important Settings
     </button>
 
-    <button id="support" class="control-btn important">
-      <i>❤</i>
-      Support Development
-    </button>
-
     <div class="status-container">
-      <div id="status" class="status-message">Ready to start...</div>
+      <div id="status" class="status-message">Ready — Hindi male voice only</div>
     </div>
   </main>
 

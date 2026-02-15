@@ -42,21 +42,10 @@ function autoStartReadingOnNextChapter() {
       return;
     }
 
-    if (autoReadEnabled) {
-      console.log("[ANPR] Page loaded. AutoRead is ON, starting read...");
-      setTimeout(() => {
-        const text = extractMainContent();
-        if (text) {
-          console.log('[ANPR] Content extracted, starting speech...');
-          startSpeech(text);
-        } else {
-          console.log("[ANPR] No content found to read. Starting retry loop.");
-          startAutoStartRetryLoop('autoRead');
-        }
-      }, 500);
-    } else {
-      console.log('[ANPR] AutoRead is OFF, not starting automatically.');
-    }
+    // Hindi-only: Do NOT auto-start without autostart_reader flag.
+    // First reading must come from user clicking "Start Reading" (user gesture required
+    // for speech synthesis, and translation needs time before speaking).
+    console.log('[ANPR] No autostart flag. Waiting for user to click Start Reading.');
   };
 
   window.addEventListener('load', handleAutoStart);
@@ -68,18 +57,9 @@ if (window.__AutoNextReaderInitialized) {
   autoStartReadingOnNextChapter();
 }
 
-// Watchdog: if speech pauses while tab is inactive/minimized, attempt resume
+// Watchdog: with chrome.tts routing, no need for speechSynthesis.resume() — chrome.tts handles it
 if (!window.__ANPR_ResumeWatchdog) {
-  window.__ANPR_ResumeWatchdog = setInterval(() => {
-    try {
-      if (!userStoppedReading && typeof speechSynthesis !== 'undefined') {
-        if (speechSynthesis.paused && isReading) {
-          speechSynthesis.resume();
-        }
-      }
-    } catch {}
-  }, 2000);
-  try { document.addEventListener('visibilitychange', () => { try { if (!userStoppedReading) speechSynthesis.resume(); } catch {} }); } catch {}
+  window.__ANPR_ResumeWatchdog = true; // keep flag to prevent re-init
 }
 
 // Retry loop: if autostart flag or autoReadEnabled is set but content wasn't ready, retry a few times
@@ -92,7 +72,7 @@ function startAutoStartRetryLoop(reason='retry') {
       if (isReading || __anprSpeechState.reading) { clearInterval(window.__ANPR_AutoStartLoop); window.__ANPR_AutoStartLoop = null; return; }
       let shouldAuto = false;
       try { shouldAuto = sessionStorage.getItem('autostart_reader') === '1'; } catch {}
-      if (!shouldAuto && !autoReadEnabled) { clearInterval(window.__ANPR_AutoStartLoop); window.__ANPR_AutoStartLoop = null; return; }
+      if (!shouldAuto) { clearInterval(window.__ANPR_AutoStartLoop); window.__ANPR_AutoStartLoop = null; return; }
       if (shouldAuto) { try { sessionStorage.removeItem('autostart_reader'); } catch {} }
       const txt = await waitForReadableContent(1200);
       if (txt && txt.length > 200) {
@@ -130,8 +110,8 @@ try {
       } catch (e) {
         console.error('[ANPR] SPA: Error reading sessionStorage:', e);
       }
-      if (!shouldAutoStart && !autoReadEnabled) {
-        console.debug('[ANPR] SPA: No autostart flag and AutoRead is OFF. Aborting.');
+      if (!shouldAutoStart) {
+        console.debug('[ANPR] SPA: No autostart flag. Hindi-only requires explicit start or auto-next.');
         return;
       }
       if (shouldAutoStart) { try { sessionStorage.removeItem('autostart_reader'); } catch {} }
@@ -176,7 +156,8 @@ try {
   });
 } catch {}
 
-// Robust fallback auto-start scheduler
+// Robust fallback auto-start scheduler — Hindi-only: only fires with autostart_reader flag
+// (i.e. after auto-next navigation). First reading requires user gesture (Start Reading button).
 try {
   (function autoStartFallbackLoop() {
     if (window.__ANPR_FallbackStarted) return; window.__ANPR_FallbackStarted = true;
@@ -186,15 +167,15 @@ try {
       const age = Date.now() - t0;
       let flag = false;
       try { flag = sessionStorage.getItem('autostart_reader') === '1'; } catch {}
-      if (!flag && !autoReadEnabled) {
+      if (!flag) {
         if (age > 10000) clearInterval(interval);
         return;
       }
       if (__anprSpeechState.reading || isReading) { clearInterval(interval); return; }
       const txt = await waitForReadableContent(2500);
       if (txt && txt.length > 200) {
-        if (flag) { try { sessionStorage.removeItem('autostart_reader'); } catch {} }
-        console.log('[ANPR] Fallback auto-start engaging…');
+        try { sessionStorage.removeItem('autostart_reader'); } catch {}
+        console.log('[ANPR] Fallback auto-start engaging (auto-next chapter)…');
         startSpeech(txt);
         clearInterval(interval);
       } else if (age > 10000) {
@@ -235,18 +216,20 @@ if (!window.__AutoNextReaderKeydownBound) {
   });
 }
 
-// Re-start if voices list gets populated late and autostart flag is pending (Chrome quirk)
+// With chrome.tts routing, voiceschanged is less relevant, but keep autostart logic
 try {
-  window.speechSynthesis.addEventListener?.('voiceschanged', () => {
-    try {
-      if (__ANPR_MODE__ === 'chapter' && !__anprSpeechState.reading) {
-        if (sessionStorage.getItem('autostart_reader') === '1') {
-          sessionStorage.removeItem('autostart_reader');
-          startChapterReader({ rate: ttsRate, pitch: ttsPitch });
+  if (window.speechSynthesis && window.speechSynthesis.addEventListener) {
+    window.speechSynthesis.addEventListener('voiceschanged', () => {
+      try {
+        if (__ANPR_MODE__ === 'chapter' && !__anprSpeechState.reading) {
+          if (sessionStorage.getItem('autostart_reader') === '1') {
+            sessionStorage.removeItem('autostart_reader');
+            startChapterReader({ rate: ttsRate, pitch: ttsPitch });
+          }
         }
-      }
-    } catch {}
-  });
+      } catch {}
+    });
+  }
 } catch {}
 
 // Expose lightweight test controls
@@ -258,6 +241,33 @@ try {
     prevChunk: () => { if (__ANPR_MODE__ === 'chapter') { try { anprInstrumentedCancel('api-prev-chunk'); } catch {}; __anprSpeechState.idx = Math.max(0, __anprSpeechState.idx - 1); anprSpeakNext(); } },
   };
 } catch {}
+
+// Handle chrome.tts events from background service worker
+if (!window.__ANPR_TtsEventBound) {
+  window.__ANPR_TtsEventBound = true;
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === 'anprTtsEvent') {
+      const cb = __anprCurrentTtsCallbacks;
+      if (!cb) return;
+      switch (message.eventType) {
+        case 'start':
+          if (cb.onstart) cb.onstart();
+          break;
+        case 'end':
+          if (cb.onend) cb.onend();
+          break;
+        case 'error':
+        case 'cancelled':
+          if (cb.onerror) cb.onerror(message);
+          break;
+        case 'word':
+        case 'sentence':
+          if (cb.onboundary) cb.onboundary();
+          break;
+      }
+    }
+  });
+}
 
 // Handle messages from the popup
 if (!window.__AutoNextReaderMsgBound) {
@@ -278,14 +288,8 @@ if (!window.__AutoNextReaderMsgBound) {
         }
         sendResponse({ autoScrollWhileReading });
       } else if (message.action === 'startSpeech') {
-        // Prime speech engine synchronously while user-gesture token is valid.
-        // Async translation will cause the gesture to expire → "not-allowed" errors.
-        try {
-          window.speechSynthesis.cancel();
-          const primer = new SpeechSynthesisUtterance('\u200B');
-          primer.volume = 0; primer.rate = 10;
-          window.speechSynthesis.speak(primer);
-        } catch (pe) { console.debug('[ANPR] Speech primer failed:', pe); }
+        // No primer needed — speech is routed through chrome.tts in background
+        // which does NOT require user gesture activation.
         (async () => {
           if (__ANPR_MODE__ === 'infinite') {
             const paras = collectInfiniteParagraphs();
@@ -354,21 +358,18 @@ if (!window.__AutoNextReaderMsgBound) {
         return true; // async
       } else if (message.action === 'previewVoice') {
         try {
-          if (__anprSpeechState.reading || isReading || window.speechSynthesis.speaking) {
+          if (__anprSpeechState.reading || isReading || __anprChromeTtsSpeaking) {
             sendResponse && sendResponse({ ok: false, reason: 'busy' });
             return true;
           }
           const sample = 'This is a short voice preview.';
-          const u = new SpeechSynthesisUtterance(sample);
-          if (message.voiceURI) {
-            const vs = window.speechSynthesis.getVoices() || [];
-            const vv = vs.find(v => v.voiceURI === message.voiceURI);
-            if (vv) u.voice = vv;
-          }
-          u.rate = typeof message.rate === 'number' ? message.rate : (ttsRate || 0.9);
-          u.pitch = typeof message.pitch === 'number' ? message.pitch : (ttsPitch || 1.0);
-          u.onend = () => { try { sendResponse && sendResponse({ ok: true }); } catch {} };
-          window.speechSynthesis.speak(u);
+          chrome.runtime.sendMessage({
+            type: 'anprTtsSpeak', text: sample, lang: 'en-US',
+            rate: typeof message.rate === 'number' ? message.rate : (ttsRate || 0.9),
+            pitch: typeof message.pitch === 'number' ? message.pitch : (ttsPitch || 1.0),
+            volume: 1.0
+          });
+          sendResponse && sendResponse({ ok: true });
           return true;
         } catch (e) {
           try { sendResponse && sendResponse({ ok: false }); } catch {}
@@ -417,6 +418,11 @@ if (!window.__AutoNextReaderMsgBound) {
         try { chrome.storage?.local.set({ translateEnabled: __anprTranslateEnabled }); } catch {}
         if (!__anprTranslateEnabled) { try { anprClearTranslateCache(); } catch {} }
         sendResponse && sendResponse({ ok: true, translateEnabled: __anprTranslateEnabled });
+      } else if (message.action === 'setGeminiApiKey') {
+        if (typeof __anprGeminiApiKey !== 'undefined') {
+          __anprGeminiApiKey = (message.geminiApiKey || '').trim() || null;
+        }
+        sendResponse && sendResponse({ ok: true });
       } else if (message.action === 'setHindiVoiceGender') {
         __anprHindiVoiceGender = message.hindiVoiceGender || 'female';
         try { chrome.storage?.local.set({ hindiVoiceGender: __anprHindiVoiceGender }); } catch {}
@@ -424,22 +430,20 @@ if (!window.__AutoNextReaderMsgBound) {
         sendResponse && sendResponse({ ok: true });
       } else if (message.action === 'previewHindiVoice') {
         try {
-          if (__anprSpeechState.reading || isReading || window.speechSynthesis.speaking) {
+          if (__anprSpeechState.reading || isReading || __anprChromeTtsSpeaking) {
             sendResponse && sendResponse({ ok: false, reason: 'busy' });
             return true;
           }
-          const sample = '\u092F\u0939 \u090F\u0915 \u0939\u093F\u0902\u0926\u0940 \u0906\u0935\u093E\u091C\u093C \u0915\u093E \u0928\u092E\u0942\u0928\u093E \u0939\u0948\u0964'; // यह एक हिंदी आवाज़ का नमूना है।
-          const u = new SpeechSynthesisUtterance(sample);
-          const gender = message.hindiVoiceGender || __anprHindiVoiceGender || 'female';
+          const sample = '\u092F\u0939 \u090F\u0915 \u0939\u093F\u0902\u0926\u0940 \u0906\u0935\u093E\u091C\u093C \u0915\u093E \u0928\u092E\u0942\u0928\u093E \u0939\u0948\u0964';
+          const gender = message.hindiVoiceGender || __anprHindiVoiceGender || 'male';
           const voice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(gender) : null;
-          if (voice) u.voice = voice;
-          u.lang = 'hi-IN';
-          u.rate = ttsRate || 0.9;
-          u.pitch = ttsPitch || 1.0;
-          u.onend = () => { try { sendResponse && sendResponse({ ok: true }); } catch {} };
-          u.onerror = () => { try { sendResponse && sendResponse({ ok: false }); } catch {} };
-          window.speechSynthesis.speak(u);
-          return true; // async
+          chrome.runtime.sendMessage({
+            type: 'anprTtsSpeak', text: sample, lang: 'hi-IN',
+            rate: ttsRate || 0.9, pitch: ttsPitch || 1.0, volume: 1.0,
+            voiceName: voice ? voice.name : undefined
+          });
+          sendResponse && sendResponse({ ok: true });
+          return true;
         } catch (e) {
           sendResponse && sendResponse({ ok: false });
           return true;

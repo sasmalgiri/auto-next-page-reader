@@ -117,34 +117,8 @@ function anprSmoothScrollTo(y) {
 // ---------- Engine self-test & error recovery ----------
 
 async function anprEngineSelfTest() {
-  if (__anprDidEngineSelfTest) return;
+  // Self-test not needed with chrome.tts routing (no user gesture issues)
   __anprDidEngineSelfTest = true;
-  try {
-    const vs = window.speechSynthesis.getVoices() || [];
-    const short = 'Test.';
-    const candidates = [];
-    for (const v of vs) {
-      if (!v) continue;
-      const score = (/neural|natural|premium/i.test(v.name) ? 3 : 0) + (v.localService ? 0 : 2) + (/^en/i.test(v.lang) ? 1 : 0);
-      candidates.push({ v, score });
-    }
-    candidates.sort((a,b)=>b.score - a.score);
-    const top = candidates.slice(0, Math.min(4, candidates.length));
-    for (const { v } of top) {
-      await new Promise(res => {
-        try {
-          const u = new SpeechSynthesisUtterance(short);
-          u.voice = v;
-          u.rate = 1; u.pitch = 1;
-          let finished = false;
-          u.onstart = () => { anprLogDebug('[ANPR][SelfTest] start', v.voiceURI); };
-          u.onend = () => { if (!finished) { finished = true; anprLogDebug('[ANPR][SelfTest] success', v.voiceURI); res(); } };
-          u.onerror = (err) => { if (!finished) { finished = true; anprLogDebug('[ANPR][SelfTest] error', v.voiceURI, err?.error || err?.type); res(); } };
-          window.speechSynthesis.speak(u);
-        } catch { res(); }
-      });
-    }
-  } catch (e) { anprLogDebug('[ANPR][SelfTest] failed', e); }
 }
 
 function anprAttemptErrorRecovery() {
@@ -228,13 +202,11 @@ function anprObserveContentUntilReady(timeoutMs = 12000) {
 function anprSpeakNext() {
   if (__anprSpeechState.cancel) return;
 
-  // If another utterance is still marked as speaking, wait and retry
-  try {
-    if (window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
-      setTimeout(anprSpeakNext, 50);
-      return;
-    }
-  } catch {}
+  // If background chrome.tts is still speaking, wait and retry
+  if (__anprChromeTtsSpeaking) {
+    setTimeout(anprSpeakNext, 50);
+    return;
+  }
 
   // Finished currently buffered subset
   if (__anprSpeechState.idx >= __anprSpeechState.chunks.length) {
@@ -256,197 +228,145 @@ function anprSpeakNext() {
     return;
   }
 
-  const s = __anprSpeechState.chunks[__anprSpeechState.idx];
-
-  // Hindi voice is pre-selected during chapter start if translation is enabled
+  const idx = __anprSpeechState.idx;
+  const s = __anprSpeechState.chunks[idx];
   const hindiVoice = (__anprTranslateEnabled && __anprSpeechState._hindiVoice) ? __anprSpeechState._hindiVoice : null;
-  const hindiLang = hindiVoice ? 'hi-IN' : null;
 
-  _anprSpeakChunk(s, hindiVoice, hindiLang);
+  // --- Translate-and-read simultaneously ---
+  if (__anprTranslateEnabled && typeof anprTranslateChunk === 'function') {
+    // Check if we have a pre-translated version
+    const preTranslated = (typeof anprGetPreTranslated === 'function') ? anprGetPreTranslated(idx) : null;
+
+    if (preTranslated) {
+      // Already translated — speak immediately
+      console.debug('[ANPR][TTS] Using pre-translated chunk', idx);
+      _anprSpeakChunk(preTranslated, hindiVoice, 'hi-IN');
+      // Pre-translate the next chunk while this one speaks
+      if (typeof anprPreTranslateChunk === 'function') {
+        anprPreTranslateChunk(idx + 1, __anprSpeechState.chunks);
+        anprPreTranslateChunk(idx + 2, __anprSpeechState.chunks);
+      }
+    } else {
+      // Not pre-translated — translate now, then speak
+      updateStatus('Translating paragraph ' + (idx + 1) + '...');
+      anprTranslateChunk(s).then(translated => {
+        if (__anprSpeechState.cancel) return;
+        console.debug('[ANPR][TTS] Translated chunk', idx, ':', (translated || '').slice(0, 60));
+        updateStatus('Speaking paragraph ' + (idx + 1) + ' in Hindi...');
+        _anprSpeakChunk(translated || s, hindiVoice, 'hi-IN');
+        // Pre-translate upcoming chunks
+        if (typeof anprPreTranslateChunk === 'function') {
+          anprPreTranslateChunk(idx + 1, __anprSpeechState.chunks);
+          anprPreTranslateChunk(idx + 2, __anprSpeechState.chunks);
+        }
+      }).catch((err) => {
+        // Translation failed — speak in English
+        console.warn('[ANPR][TTS] Translation failed, falling back to English:', err);
+        updateStatus('Translation failed, reading English...');
+        _anprSpeakChunk(s, null, null);
+      });
+    }
+    return;
+  }
+
+  // No translation — speak English directly
+  _anprSpeakChunk(s, hindiVoice, hindiVoice ? 'hi-IN' : null);
 }
 
 function _anprSpeakChunk(s, forceVoice, forceLang) {
-  const u = new SpeechSynthesisUtterance(s);
-  let voiceForChunk = forceVoice || null;
+  if (!s || (typeof s === 'string' && s.trim().length === 0)) {
+    __anprSpeechState.idx++;
+    setTimeout(anprSpeakNext, 0);
+    return;
+  }
+  __anprSpeakAttempts++;
+  if (__anprSpeakAttempts > __anprMaxUtterances) {
+    console.warn('[ANPR] Utterance cap reached, attempting auto-next.');
+    __anprSpeechState.idx = __anprSpeechState.chunks.length;
+    setTimeout(maybeAutoNext, 0);
+    return;
+  }
+
+  const voiceName = forceVoice ? (forceVoice.name || forceVoice.voiceName || null) : null;
   const tuned = __anprTuneProsody(s, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
-  u.rate = tuned.rate; u.pitch = tuned.pitch; u.volume = 1;
-  if (voiceForChunk) u.voice = voiceForChunk;
-  if (forceLang) u.lang = forceLang;
 
-  u.onstart = () => {
-    try {
-      __anprTTSIdle = false; __anprConsecutiveSpeakErrors = 0; __anprSuccessfulUtterances++;
-      __anprLastUtteranceTs = Date.now();
-      __anprLastStartTs = __anprLastUtteranceTs;
-      console.debug('[ANPR][TTS] onstart', {
-        idx: __anprSpeechState.idx,
-        total: __anprSpeechState.chunks.length,
-        len: (s||'').length,
-        voice: voiceForChunk && voiceForChunk.voiceURI,
-        rate: u.rate,
-        pitch: u.pitch
-      });
-    } catch {}
-  };
-  u.onboundary = () => {
-    try {
-      __anprLastBoundaryTs = Date.now();
-      const ratio = (__anprSpeechState.idx + 1) / Math.max(1, __anprSpeechState.chunks.length);
-      const rect = __anprSpeechState.container.getBoundingClientRect();
-      const y = window.scrollY + rect.top + ratio * rect.height;
-      anprSmoothScrollTo(y);
-    } catch {}
-  };
-  u.onend = () => {
-    __anprTTSIdle = true;
-    if (__anprReadingLock) { __anprReadingLock = false; return; }
-    __anprSpeechState.idx++;
-    __anprLastUtteranceTs = Date.now();
-    console.debug('[ANPR][TTS] onend', {
-      idx: __anprSpeechState.idx,
-      total: __anprSpeechState.chunks.length,
-      consecutiveErrors: __anprConsecutiveSpeakErrors
-    });
-    const gap = (__anprNaturalPreset || __anprDynamicProsody) ? (tuned.pauseAfterMs || 0) : 0;
-    setTimeout(anprSpeakNext, gap);
-  };
-  u.onerror = (e) => {
-    __anprTTSIdle = true;
-    if (__anprReadingLock) { __anprReadingLock = false; return; }
-    __anprConsecutiveSpeakErrors++;
-    const errorType = anprMapTTSError(e);
-
-    if (errorType === 'interrupted' && !__anprLastBoundaryTs) {
-      if (!__anprInterruptedRetryFlag) {
-        __anprInterruptedRetryFlag = true;
-        console.debug('[ANPR][TTS] interrupted without boundary; retrying same chunk before advancing');
-        setTimeout(anprSpeakNext, 80);
-        return;
-      }
-    }
-    __anprLastErrorMeta = {
-      idx: __anprSpeechState.idx,
-      total: __anprSpeechState.chunks.length,
-      len: (s||'').length,
-      voice: voiceForChunk && voiceForChunk.voiceURI,
-      rate: u.rate,
-      pitch: u.pitch,
-      error: e && (e.error || e.type || 'unknown'),
-      errorType,
-      consecutiveErrors: __anprConsecutiveSpeakErrors,
-      successfulUtterances: __anprSuccessfulUtterances,
-      recoveryAttempts: __anprErrorRecoveryAttempts
-    };
-    if (__anprDebugLogging) {
-      console.warn('[ANPR][TTS] onerror', __anprLastErrorMeta);
-      try { console.debug('[ANPR][TTS] ERROR_META_JSON ' + JSON.stringify(__anprLastErrorMeta)); } catch {}
-    } else if (__anprConsecutiveSpeakErrors <= 3) {
-      console.warn('[ANPR][TTS] onerror', errorType, 'chunkLen=', (s||'').length);
-    }
-    __anprLastUtteranceTs = Date.now();
-    // Handle not-allowed: often autoplay/user-gesture policy
-    try {
-      const errStr = String(errorType || (e && (e.error || e.type)) || '').toLowerCase();
-      if (errStr.includes('not-allowed') || errStr.includes('notallowed')) {
-        try { window.speechSynthesis && window.speechSynthesis.resume(); } catch {}
-        if (__anprSuccessfulUtterances === 0) {
-          const cur = __anprSpeechState.chunks[__anprSpeechState.idx] || '';
-          if (typeof cur === 'string' && cur.length >= 200) {
-            const re = anprNormalizeChunks([cur], { maxLen: 160, minMergeLen: 40, hardSplitLen: 500 });
-            if (Array.isArray(re) && re.length) {
-              __anprSpeechState.chunks.splice(__anprSpeechState.idx, 1, ...re);
-            }
-          }
-        }
-        setTimeout(anprSpeakNext, 120);
-        return;
-      }
-    } catch {}
-    if (__anprSuccessfulUtterances === 0 && __anprConsecutiveSpeakErrors >= 2) {
-      try { anprEngineSelfTest(); } catch {}
-    }
-    try {
-      if (errorType !== 'interrupted' && voiceForChunk && voiceForChunk.voiceURI) {
-        __anprFailedVoiceURIs.add(voiceForChunk.voiceURI);
-      }
-    } catch {}
-    if (errorType === 'interrupted') {
-      __anprConsecutiveSpeakErrors = Math.max(0, __anprConsecutiveSpeakErrors - 1);
-    }
-    // Adaptive re-splitting for large first chunk failures
-    const shouldAdaptiveResplit = (errorType !== 'interrupted' && __anprSuccessfulUtterances === 0 && __anprConsecutiveSpeakErrors >= 2 && typeof s === 'string' && s.length > 220);
-    if (shouldAdaptiveResplit) {
+  // Store callbacks so the anprTtsEvent message listener can dispatch to them
+  __anprCurrentTtsCallbacks = {
+    onstart: () => {
       try {
-        const sub = anprSplitChunks(s, 120).filter(x => x && x.trim().length);
-        if (sub.length >= 2) {
-          console.debug('[ANPR][TTS] Adaptive re-splitting large failing chunk', { originalLen: s.length, newPieces: sub.length });
-          __anprSpeechState.chunks.splice(__anprSpeechState.idx, 1, sub[0]);
-          for (let i = 1; i < sub.length; i++) __anprSpeechState.chunks.splice(__anprSpeechState.idx + i, 0, sub[i]);
-          __anprConsecutiveSpeakErrors = 0;
-          setTimeout(anprSpeakNext, 0);
-          return;
+        __anprTTSIdle = false; __anprConsecutiveSpeakErrors = 0; __anprSuccessfulUtterances++;
+        __anprLastUtteranceTs = Date.now();
+        __anprLastStartTs = __anprLastUtteranceTs;
+        console.debug('[ANPR][TTS] onstart', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length, len: (s||'').length, voice: voiceName });
+      } catch {}
+    },
+    onboundary: () => {
+      try {
+        __anprLastBoundaryTs = Date.now();
+        const ratio = (__anprSpeechState.idx + 1) / Math.max(1, __anprSpeechState.chunks.length);
+        const rect = __anprSpeechState.container && __anprSpeechState.container.getBoundingClientRect();
+        if (rect) {
+          const y = window.scrollY + rect.top + ratio * rect.height;
+          anprSmoothScrollTo(y);
         }
-      } catch (adE) {
-        console.debug('[ANPR][TTS] Adaptive re-split failed', adE);
-      }
-    }
-    __anprSpeechState.idx++;
-    if (__anprConsecutiveSpeakErrors > 4) {
-      if (__anprSuccessfulUtterances === 0) {
+      } catch {}
+    },
+    onend: () => {
+      __anprTTSIdle = true;
+      __anprChromeTtsSpeaking = false;
+      if (__anprReadingLock) { __anprReadingLock = false; return; }
+      __anprSpeechState.idx++;
+      __anprLastUtteranceTs = Date.now();
+      console.debug('[ANPR][TTS] onend', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length });
+      const gap = (__anprNaturalPreset || __anprDynamicProsody) ? (tuned.pauseAfterMs || 0) : 0;
+      setTimeout(anprSpeakNext, gap);
+    },
+    onerror: (e) => {
+      __anprTTSIdle = true;
+      __anprChromeTtsSpeaking = false;
+      if (__anprReadingLock) { __anprReadingLock = false; return; }
+      __anprConsecutiveSpeakErrors++;
+      const errMsg = (e && e.errorMessage) || 'unknown';
+      console.warn('[ANPR][TTS] onerror', errMsg, 'chunkLen=', (s||'').length);
+      __anprLastUtteranceTs = Date.now();
+      __anprSpeechState.idx++;
+      if (__anprConsecutiveSpeakErrors > 4 && __anprSuccessfulUtterances === 0) {
         const recovered = anprAttemptErrorRecovery();
         if (recovered) return;
         if (__anprSpeechState.idx >= __anprSpeechState.chunks.length) {
-          console.warn('[ANPR] Speech failed for entire chapter; blocking auto-next.');
-          updateStatus('Speech engine failed on this chapter. Not auto-navigating.');
+          updateStatus('Speech engine failed. Not auto-navigating.');
           __anprAdvanceLock = false; __anprSpeechState.reading = false; return;
         }
-      } else if (__anprConsecutiveSpeakErrors > 8) {
-        console.warn('[ANPR] Too many speech errors after some progress; considering navigation.');
-        if (__anprSpeechState.idx >= __anprSpeechState.chunks.length) { maybeAutoNext(); return; }
       }
+      const backoff = (__anprConsecutiveSpeakErrors > 2)
+        ? Math.min(1200, __anprErrorBackoffBase * Math.pow(1.6, __anprConsecutiveSpeakErrors - 2)) : 0;
+      setTimeout(anprSpeakNext, backoff);
     }
-    const backoffDelay = (__anprConsecutiveSpeakErrors > 2)
-      ? Math.min(1200, __anprErrorBackoffBase * Math.pow(1.6, __anprConsecutiveSpeakErrors - 2))
-      : 0;
-    const delay = errorType === 'interrupted' ? 0 : backoffDelay;
-    setTimeout(anprSpeakNext, delay);
   };
 
+  // Send speech to background service worker via chrome.tts (no user gesture needed)
+  __anprChromeTtsSpeaking = true;
+  console.debug('[ANPR][TTS] sending to background', { idx: __anprSpeechState.idx, len: (s||'').length, voice: voiceName, lang: forceLang });
   try {
-    if (!s || (typeof s === 'string' && s.trim().length === 0)) {
-      __anprSpeechState.idx++;
-      setTimeout(anprSpeakNext, 0);
-      return;
-    }
-    __anprSpeakAttempts++;
-    if (__anprSpeakAttempts > __anprMaxUtterances) {
-      console.warn('[ANPR] Utterance cap reached for this chapter, attempting auto-next.');
-      __anprSpeechState.idx = __anprSpeechState.chunks.length;
-      setTimeout(maybeAutoNext, 0);
-      return;
-    }
-    setTimeout(() => {
-      try {
-        console.debug('[ANPR][TTS] speak attempt', {
-          idx: __anprSpeechState.idx,
-          total: __anprSpeechState.chunks.length,
-          len: (s||'').length,
-          voice: voiceForChunk && voiceForChunk.voiceURI,
-          rate: u.rate,
-          pitch: u.pitch,
-          recoveryAttempts: __anprErrorRecoveryAttempts,
-          consecutiveErrors: __anprConsecutiveSpeakErrors,
-          successfulUtterances: __anprSuccessfulUtterances
-        });
-        window.speechSynthesis.speak(u);
-      } catch (e2) {
-        __anprConsecutiveSpeakErrors++; __anprSpeechState.idx++;
-        __anprLastErrorMeta = { immediateThrow: true, error: String(e2) };
-        console.warn('[ANPR][TTS] immediate speak throw', __anprLastErrorMeta);
-        setTimeout(anprSpeakNext, 0);
+    chrome.runtime.sendMessage({
+      type: 'anprTtsSpeak',
+      text: s,
+      lang: forceLang || 'en-US',
+      rate: tuned.rate,
+      pitch: tuned.pitch,
+      volume: 1.0,
+      voiceName: voiceName || undefined
+    }, (resp) => {
+      if (chrome.runtime.lastError || (resp && !resp.ok)) {
+        console.warn('[ANPR][TTS] Background speak failed:', chrome.runtime.lastError?.message || resp?.error);
+        __anprChromeTtsSpeaking = false;
+        __anprConsecutiveSpeakErrors++;
+        __anprSpeechState.idx++;
+        setTimeout(anprSpeakNext, 200);
       }
-    }, 0);
+    });
   } catch (e) {
+    __anprChromeTtsSpeaking = false;
     __anprConsecutiveSpeakErrors++;
     __anprSpeechState.idx++;
     setTimeout(anprSpeakNext, 0);
@@ -463,62 +383,31 @@ function anprStartFlowWatchdog() {
         if (!__anprSpeechState.reading || __anprSpeechState.cancel) return;
         const now = Date.now();
         const atEnd = __anprSpeechState.idx >= (__anprSpeechState.chunks?.length || 0);
-        const idleTooLong = (now - __anprLastUtteranceTs) > 3500;
-        const engineBusy = window.speechSynthesis && (speechSynthesis.speaking || speechSynthesis.pending);
-        const stuckOnFirst = __anprSuccessfulUtterances === 0 && (now - __anprLastUtteranceTs) > 5000;
-        const noBoundaryProgress = __anprLastStartTs && (__anprLastBoundaryTs < __anprLastStartTs);
-        const speakingStuck = engineBusy && !atEnd && __anprLastStartTs && (now - __anprLastStartTs) > 4200 && (__anprLastUtteranceTs === __anprLastStartTs) && noBoundaryProgress;
+        const engineBusy = __anprChromeTtsSpeaking;
+
+        // With chrome.tts: if engine is busy (onstart fired), let it finish.
+        // chrome.tts voices often don't fire word/boundary events, so we can't
+        // use boundary progress as a stuck signal. Give up to 60s per chunk.
+        if (engineBusy && __anprLastStartTs && (now - __anprLastStartTs) > 60000) {
+          console.warn('[ANPR][Watchdog] Chunk speaking for >60s, forcing next.');
+          anprInstrumentedCancel('watchdog-timeout-60s');
+          __anprSpeechState.idx++;
+          setTimeout(anprSpeakNext, 100);
+          return;
+        }
+
+        // If engine is NOT busy and NOT at end and idle too long, nudge next chunk
+        const idleTooLong = !engineBusy && (now - __anprLastUtteranceTs) > 5000;
         if (!engineBusy && !atEnd && idleTooLong) {
-          console.debug('[ANPR][Watchdog] Flow stall detected; attempting resume speak.', {
+          console.debug('[ANPR][Watchdog] Flow stall (idle, not speaking); nudging.', {
             idx: __anprSpeechState.idx,
             total: __anprSpeechState.chunks.length,
             idleMs: now - __anprLastUtteranceTs
           });
-          try { speechSynthesis.resume(); } catch {}
           setTimeout(anprSpeakNext, 40);
         }
-        else if (speakingStuck) {
-          __anprStuckCycles++;
-          console.debug('[ANPR][Watchdog] Speaking stuck detected (no boundary/end).', {
-            idx: __anprSpeechState.idx,
-            chunkPreview: (__anprSpeechState.chunks[__anprSpeechState.idx]||'').slice(0,120),
-            msSinceStart: now - __anprLastStartTs,
-            stuckCycles: __anprStuckCycles
-          });
-          if (__anprStuckCycles >= 2) {
-            try {
-              const voices = speechSynthesis.getVoices();
-              if (voices && voices.length) {
-                const cur = __anprSpeechState.voice;
-                let idxV = voices.findIndex(v => v === cur);
-                if (idxV < 0) idxV = 0;
-                const next = voices[(idxV + 1) % voices.length];
-                if (next && next !== cur) {
-                  __anprSpeechState.voice = next;
-                  __anprStuckCycles = 0;
-                  console.debug('[ANPR][Watchdog] Rotating voice to', next.voiceURI);
-                }
-              }
-            } catch {}
-          }
-          anprInstrumentedCancel('watchdog-speaking-stuck');
-          setTimeout(anprSpeakNext, 90);
-        }
-        if (stuckOnFirst && __anprSpeechState.idx < (__anprSpeechState.chunks.length||0)) {
-          const cur = __anprSpeechState.chunks[__anprSpeechState.idx];
-          if (typeof cur === 'string' && cur.length > 160) {
-            console.debug('[ANPR][Watchdog] Hard re-splitting first stuck chunk.', { originalLen: cur.length });
-            try {
-              const finer = anprNormalizeChunks([cur], { maxLen: 140, minMergeLen: 40, hardSplitLen: 400 });
-              if (Array.isArray(finer) && finer.length) {
-                __anprSpeechState.chunks.splice(__anprSpeechState.idx, 1, ...finer);
-                __anprConsecutiveSpeakErrors = 0; __anprLastUtteranceTs = now;
-                setTimeout(anprSpeakNext, 60);
-              }
-            } catch {}
-          }
-        }
-        if (atEnd && idleTooLong && __anprAdvanceLock) {
+
+        if (atEnd && !engineBusy && (now - __anprLastUtteranceTs) > 5000 && __anprAdvanceLock) {
           console.debug('[ANPR][Watchdog] Releasing stale advance lock.');
           __anprAdvanceLock = false; maybeAutoNext();
         }
@@ -583,66 +472,26 @@ async function startChapterReader(opts = {}) {
     }
   }
 
-  // --- Hindi Translation: translate full chapter upfront ---
-  if (__anprTranslateEnabled && typeof anprTranslateFullChapter === 'function') {
+  // --- Hindi: Pick voice, clear pre-translation buffer ---
+  if (__anprTranslateEnabled) {
     try {
-      // IMPORTANT: Prime the speech engine NOW while user gesture is still valid.
-      // Async translation will cause the gesture to expire, resulting in "not-allowed" errors.
-      try {
-        const primer = new SpeechSynthesisUtterance('\u200B'); // zero-width space
-        primer.volume = 0;
-        primer.rate = 10; // finish instantly
-        window.speechSynthesis.speak(primer);
-        console.debug('[ANPR][Translate] Speech engine primed for user gesture policy');
-      } catch (pe) {
-        console.debug('[ANPR][Translate] Primer failed (non-fatal):', pe);
-      }
-
-      // Ensure voices are loaded before picking
-      if (typeof anprEnsureVoicesLoaded === 'function') {
-        await anprEnsureVoicesLoaded();
-      }
-      // Pre-select Hindi voice
+      if (typeof anprEnsureVoicesLoaded === 'function') await anprEnsureVoicesLoaded();
       const hindiVoice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(__anprHindiVoiceGender) : null;
       __anprSpeechState._hindiVoice = hindiVoice;
-      if (hindiVoice) {
-        console.debug('[ANPR][Translate] Hindi voice ready:', hindiVoice.name, 'gender:', __anprHindiVoiceGender);
-      } else {
-        console.warn('[ANPR][Translate] No Hindi voice found, will use default');
-      }
+      if (hindiVoice) console.debug('[ANPR][Hindi] Voice ready:', hindiVoice.name);
+      if (typeof anprClearPreTranslated === 'function') anprClearPreTranslated();
 
-      // Translate all paragraphs
-      const originalParas = __anprSpeechState.chunks.slice();
-      updateStatus('Translating chapter to Hindi... Please wait.');
-      const translatedParas = await anprTranslateFullChapter(originalParas);
-
-      if (__anprSpeechState.cancel) return; // user stopped during translation
-
-      // Apply literary post-processing to the full chapter
-      const processed = (typeof anprHindiPostProcessAll === 'function')
-        ? anprHindiPostProcessAll(translatedParas)
-        : translatedParas;
-
-      // Re-chunk the translated text for TTS (Hindi text can be longer)
-      const hindiChunks = [];
-      for (const para of processed) {
-        if (!para || !para.trim()) continue;
-        const splits = anprSplitChunks(para, 200);
-        hindiChunks.push(...splits);
-      }
-
-      if (hindiChunks.length > 0) {
-        __anprSpeechState.chunks = anprNormalizeChunks(hindiChunks, { maxLen: 240, minMergeLen: 40, hardSplitLen: 600 });
-        __anprSpeechState.idx = 0;
-        console.debug('[ANPR][Translate] Full chapter translated:', __anprSpeechState.chunks.length, 'chunks');
+      // Pre-translate the first 2 chunks in background while primer speaks
+      if (typeof anprPreTranslateChunk === 'function') {
+        anprPreTranslateChunk(0, __anprSpeechState.chunks);
+        anprPreTranslateChunk(1, __anprSpeechState.chunks);
       }
     } catch (e) {
-      console.warn('[ANPR][Translate] Full chapter translation failed, reading in English:', e);
-      updateStatus('Translation failed, reading in English...');
-      __anprSpeechState._hindiVoice = null;
+      console.debug('[ANPR][Hindi] Voice/pre-translate setup:', e);
     }
   }
 
+  // Start the speak loop (each chunk translates inline before speaking)
   anprSpeakNext();
 }
 
@@ -698,38 +547,41 @@ function startSpeech(text, rate = null, pitch = null, opts = {}) {
       return;
     }
     if (__ANPR_MODE__ === 'infinite') {
-      if (utterance) {
-        try { anprInstrumentedCancel('infinite-restart'); } catch {}
-      }
+      try { anprInstrumentedCancel('infinite-restart'); } catch {}
       if (text) remainingText = text;
-      utterance = new SpeechSynthesisUtterance(remainingText);
       try { if (text) { __anprLastTextLen = text.length; saveInfiniteProgress(); } } catch {}
       const langToUse = (opts.lang) || (ttsAutoLang ? detectPageLanguage() : 'en-US') || 'en-US';
-      utterance.lang = langToUse;
-      utterance.rate = (typeof rate === 'number' ? rate : ttsRate);
-      utterance.pitch = (typeof pitch === 'number' ? pitch : ttsPitch);
-      utterance.onend = () => {
-        if (!userStoppedReading) {
-          isReading = false; stopAutoScroll(); remainingText = '';
-          continueInfiniteReading();
+      const useRate = (typeof rate === 'number' ? rate : ttsRate);
+      const usePitch = (typeof pitch === 'number' ? pitch : ttsPitch);
+      // Route through chrome.tts via background (no user gesture needed)
+      __anprCurrentTtsCallbacks = {
+        onstart: () => { __anprTTSIdle = false; },
+        onboundary: () => {},
+        onend: () => {
+          __anprChromeTtsSpeaking = false; __anprTTSIdle = true;
+          if (!userStoppedReading) {
+            isReading = false; stopAutoScroll(); remainingText = '';
+            continueInfiniteReading();
+          }
+        },
+        onerror: () => {
+          __anprChromeTtsSpeaking = false; __anprTTSIdle = true;
+          console.warn('[ANPR][TTS] Infinite mode speech error');
         }
       };
-      utterance.onboundary = (event) => {
-        if (event.name === 'word') {
-          remainingText = remainingText.substring(event.charIndex);
-        }
-      };
-      if (window.speechSynthesis.getVoices().length === 0) {
-        const once = () => { window.speechSynthesis.removeEventListener('voiceschanged', once); try { if (!isReading) window.speechSynthesis.speak(utterance); } catch {} };
-        window.speechSynthesis.addEventListener('voiceschanged', once);
-      }
-      window.speechSynthesis.speak(utterance);
+      __anprChromeTtsSpeaking = true;
+      try {
+        chrome.runtime.sendMessage({
+          type: 'anprTtsSpeak', text: remainingText,
+          lang: langToUse, rate: useRate, pitch: usePitch, volume: 1.0
+        });
+      } catch (e) { __anprChromeTtsSpeaking = false; }
       isReading = true; userStoppedReading = false; if (autoScrollWhileReading) startAutoScroll();
     } else {
       // Chapter mode — always use startChapterReader for proper Hindi translation support
       userStoppedReading = false;
       const opts2 = { rate: (typeof rate === 'number' ? rate : ttsRate), pitch: (typeof pitch === 'number' ? pitch : ttsPitch) };
-      try { __anprReadingLock = true; window.speechSynthesis.cancel(); } catch {}
+      try { __anprReadingLock = true; anprInstrumentedCancel('chapter-restart'); } catch {}
       // Reset state so startChapterReader doesn't think we're already reading
       __anprSpeechState.cancel = false; __anprSpeechState.reading = false; isReading = false;
       startChapterReader(opts2);
@@ -851,7 +703,7 @@ function skipForward() {
         updateStatus('End of chapter');
         return;
       }
-      try { __anprReadingLock = true; window.speechSynthesis.cancel(); __anprTTSIdle = true; } catch {}
+      try { __anprReadingLock = true; anprInstrumentedCancel('skip-forward'); __anprTTSIdle = true; } catch {}
       __anprSpeechState.idx = Math.min(idx + 1, total);
       anprSpeakNext();
     } else if (remainingText) {
