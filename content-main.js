@@ -266,6 +266,18 @@ if (!window.__ANPR_TtsEventBound) {
           break;
       }
     }
+    // Voice selection info from background
+    if (message && message.type === 'anprVoiceInfo') {
+      console.log('[ANPR] Voice selected by background:', message.voiceName, 'Madhur available:', message.madhurAvailable);
+      if (!message.madhurAvailable && __anprTranslateEnabled) {
+        const voiceName = message.voiceName || 'default';
+        const isMadhur = voiceName.toLowerCase().includes('madhur');
+        if (!isMadhur) {
+          console.warn('[ANPR] Madhur voice NOT available! Using:', voiceName, '— Switch to Microsoft Edge for Madhur voice, or use Cloud TTS.');
+          updateStatus('Using: ' + voiceName + ' (Madhur needs Edge browser or Cloud TTS)');
+        }
+      }
+    }
   });
 }
 

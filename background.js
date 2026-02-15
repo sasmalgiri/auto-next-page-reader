@@ -89,7 +89,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const gender = msg.gender || 'male';
         chrome.tts.getVoices((voices) => {
           const allVoices = voices || [];
-          console.log('[ANPR BG] === ALL AVAILABLE VOICES ===');
+          console.log('[ANPR BG] === ALL AVAILABLE VOICES (' + allVoices.length + ') ===');
           allVoices.forEach((v, i) => {
             console.log(`[ANPR BG] Voice[${i}]: name="${v.voiceName}" lang="${v.lang}" remote=${v.remote}`);
           });
@@ -100,6 +100,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (exactMatch) {
             opts.voiceName = exactMatch.voiceName;
             console.log('[ANPR BG] Found preferred voice by name:', opts.voiceName);
+            _notifyVoiceSelected(tabId, opts.voiceName, true);
             doSpeak(opts);
             return;
           }
@@ -132,30 +133,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               opts.voiceName = scored[0].voice.voiceName;
               console.log('[ANPR BG] Hindi voice by scoring:', opts.voiceName, 'score:', scored[0].score);
             }
+            // Check if Madhur was NOT found — notify user
+            const hasMadhur = allVoices.some(v => (v.voiceName || '').toLowerCase().includes('madhur'));
+            _notifyVoiceSelected(tabId, opts.voiceName, hasMadhur);
             doSpeak(opts);
             return;
           }
 
-          // Step 3: No Hindi voices found in chrome.tts — try hardcoded known Windows voice names
-          const knownNames = gender === 'male'
-            ? ['Microsoft Madhur Online (Natural) - Hindi (India)', 'Microsoft Madhur - Hindi (India)', 'Madhur']
-            : ['Microsoft Swara Online (Natural) - Hindi (India)', 'Microsoft Swara - Hindi (India)', 'Swara'];
-          for (const knownName of knownNames) {
-            const found = allVoices.find(v => v.voiceName === knownName);
-            if (found) {
-              opts.voiceName = found.voiceName;
-              console.log('[ANPR BG] Using hardcoded voice name:', opts.voiceName);
-              doSpeak(opts);
-              return;
-            }
-          }
-
-          // Step 4: Last resort — just set the known name and hope chrome.tts knows it
-          const fallbackName = gender === 'male'
-            ? 'Microsoft Madhur Online (Natural) - Hindi (India)'
-            : 'Microsoft Swara Online (Natural) - Hindi (India)';
-          opts.voiceName = fallbackName;
-          console.warn('[ANPR BG] No Hindi voice found! Trying fallback name:', fallbackName);
+          // Step 3: No Hindi voices at all — use whatever is available
+          console.warn('[ANPR BG] No Hindi voices found in chrome.tts!');
+          _notifyVoiceSelected(tabId, null, false);
           doSpeak(opts);
         });
       } else {
@@ -252,6 +239,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.warn('background.onMessage error:', e);
   }
 });
+
+// Notify content script which voice was selected (for UI feedback)
+function _notifyVoiceSelected(tabId, voiceName, madhurAvailable) {
+  try {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'anprVoiceInfo',
+      voiceName: voiceName || 'default',
+      madhurAvailable: !!madhurAvailable
+    });
+  } catch {}
+}
 
 // Helper to check if a URL matches an origin pattern like https://example.com/*
 function urlMatchesOrigin(url, originPattern) {
