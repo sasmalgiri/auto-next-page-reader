@@ -131,6 +131,34 @@
     });
   }
 
+  // ---------- Google Cloud TTS API Key ----------
+  const cloudTtsKeyInput = document.getElementById('cloudTtsApiKey');
+  const cloudTtsKeyStatus = document.getElementById('cloudTtsKeyStatus');
+
+  chrome.storage.local.get(['cloudTtsApiKey'], (data) => {
+    if (cloudTtsKeyInput && typeof data.cloudTtsApiKey === 'string' && data.cloudTtsApiKey) {
+      cloudTtsKeyInput.value = data.cloudTtsApiKey;
+      cloudTtsKeyStatus.textContent = 'Key saved';
+      cloudTtsKeyStatus.className = 'hint ok';
+    }
+  });
+
+  document.getElementById('saveCloudTtsKey')?.addEventListener('click', () => {
+    const key = cloudTtsKeyInput.value.trim();
+    if (!key) {
+      chrome.storage.local.set({ cloudTtsApiKey: '', cloudTtsEnabled: false }, () => {
+        cloudTtsKeyStatus.textContent = 'Key cleared. Cloud TTS disabled.';
+        cloudTtsKeyStatus.className = 'hint';
+        setTimeout(() => { cloudTtsKeyStatus.textContent = ''; }, 2000);
+      });
+      return;
+    }
+    chrome.storage.local.set({ cloudTtsApiKey: key }, () => {
+      cloudTtsKeyStatus.textContent = 'Key saved. Select "Google Cloud Neural" in popup to activate.';
+      cloudTtsKeyStatus.className = 'hint ok';
+    });
+  });
+
   // ---------- Google Cloud Translation API Key ----------
   const apiKeyInput = document.getElementById('translateApiKey');
   const apiKeyStatus = document.getElementById('apiKeyStatus');

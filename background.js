@@ -89,6 +89,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
+    // --- Google Cloud TTS synthesis (premium neural voices) ---
+    if (msg && msg.type === 'anprCloudTtsSynthesize') {
+      const { text, lang, voiceName, apiKey, rate, pitch } = msg;
+      if (!apiKey || !text) { sendResponse({ ok: false, error: 'missing_params' }); return true; }
+      (async () => {
+        try {
+          const ac = new AbortController();
+          const tid = setTimeout(() => ac.abort(), 20000);
+          const resp = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: ac.signal,
+            body: JSON.stringify({
+              input: { text },
+              voice: { languageCode: lang || 'hi-IN', name: voiceName || 'hi-IN-Neural2-B' },
+              audioConfig: {
+                audioEncoding: 'MP3',
+                speakingRate: typeof rate === 'number' ? rate : 1.0,
+                pitch: typeof pitch === 'number' ? pitch : 0,
+                volumeGainDb: 0
+              }
+            })
+          });
+          clearTimeout(tid);
+          if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            console.warn('[ANPR BG] Cloud TTS error:', resp.status, errText.slice(0, 200));
+            sendResponse({ ok: false, error: `API ${resp.status}` });
+            return;
+          }
+          const data = await resp.json();
+          if (data && data.audioContent) {
+            sendResponse({ ok: true, audioContent: data.audioContent });
+          } else {
+            sendResponse({ ok: false, error: 'no_audio_content' });
+          }
+        } catch (e) {
+          console.warn('[ANPR BG] Cloud TTS fetch error:', e);
+          sendResponse({ ok: false, error: String(e) });
+        }
+      })();
+      return true;
+    }
+
     if (msg && msg.type === 'anprHandshake') {
       // Provide tabId back to content script for session registration
       if (sender && typeof sender.tab?.id === 'number') {

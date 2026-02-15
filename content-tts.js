@@ -287,6 +287,118 @@ function _anprSpeakChunk(s, forceVoice, forceLang) {
     return;
   }
 
+  // Google Cloud TTS path (premium neural voices)
+  if (__anprCloudTtsEnabled && __anprCloudTtsApiKey) {
+    _anprSpeakChunkCloud(s, forceLang);
+    return;
+  }
+
+  // Regular chrome.tts path (free browser TTS)
+  _anprSpeakChunkBrowser(s, forceVoice, forceLang);
+}
+
+// ---------- Google Cloud TTS playback ----------
+
+function _anprSpeakChunkCloud(text, lang) {
+  const tuned = __anprTuneProsody(text, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
+  // Map pitch: browser uses 0.5-2.0 (center 1.0), Cloud uses -20 to 20 semitones (center 0)
+  const cloudPitch = Math.round((tuned.pitch - 1.0) * 20);
+
+  __anprChromeTtsSpeaking = true;
+  console.debug('[ANPR][CloudTTS] synthesizing', { idx: __anprSpeechState.idx, len: text.length, voice: __anprCloudTtsVoice, lang: lang || 'hi-IN' });
+
+  try {
+    chrome.runtime.sendMessage({
+      type: 'anprCloudTtsSynthesize',
+      text: text,
+      lang: lang || 'hi-IN',
+      voiceName: __anprCloudTtsVoice || 'hi-IN-Neural2-B',
+      apiKey: __anprCloudTtsApiKey,
+      rate: tuned.rate,
+      pitch: cloudPitch
+    }, (resp) => {
+      if (chrome.runtime.lastError || !resp || !resp.ok) {
+        console.warn('[ANPR][CloudTTS] Synthesis failed:', resp?.error || chrome.runtime.lastError?.message);
+        __anprChromeTtsSpeaking = false;
+        // Fallback to browser TTS
+        console.debug('[ANPR][CloudTTS] Falling back to browser TTS.');
+        _anprSpeakChunkBrowser(text, null, lang);
+        return;
+      }
+
+      // Play the base64 MP3 audio in content script
+      try {
+        const audio = new Audio('data:audio/mp3;base64,' + resp.audioContent);
+        __anprCurrentAudio = audio;
+
+        audio.onplay = () => {
+          try {
+            __anprTTSIdle = false;
+            __anprConsecutiveSpeakErrors = 0;
+            __anprSuccessfulUtterances++;
+            __anprLastUtteranceTs = Date.now();
+            __anprLastStartTs = __anprLastUtteranceTs;
+            console.debug('[ANPR][CloudTTS] playing', { idx: __anprSpeechState.idx });
+          } catch {}
+        };
+
+        audio.onended = () => {
+          __anprTTSIdle = true;
+          __anprChromeTtsSpeaking = false;
+          __anprCurrentAudio = null;
+          if (__anprReadingLock) { __anprReadingLock = false; return; }
+          __anprSpeechState.idx++;
+          __anprLastUtteranceTs = Date.now();
+          console.debug('[ANPR][CloudTTS] ended', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length });
+          const gap = (__anprNaturalPreset || __anprDynamicProsody) ? (tuned.pauseAfterMs || 0) : 0;
+          setTimeout(anprSpeakNext, gap);
+        };
+
+        audio.onerror = (e) => {
+          __anprTTSIdle = true;
+          __anprChromeTtsSpeaking = false;
+          __anprCurrentAudio = null;
+          if (__anprReadingLock) { __anprReadingLock = false; return; }
+          __anprConsecutiveSpeakErrors++;
+          console.warn('[ANPR][CloudTTS] audio error', e);
+          __anprSpeechState.idx++;
+          setTimeout(anprSpeakNext, 200);
+        };
+
+        // Auto-scroll based on reading progress
+        try {
+          const ratio = (__anprSpeechState.idx + 1) / Math.max(1, __anprSpeechState.chunks.length);
+          const rect = __anprSpeechState.container && __anprSpeechState.container.getBoundingClientRect();
+          if (rect) {
+            const y = window.scrollY + rect.top + ratio * rect.height;
+            anprSmoothScrollTo(y);
+          }
+        } catch {}
+
+        audio.play().catch((e) => {
+          console.warn('[ANPR][CloudTTS] play() rejected:', e);
+          __anprChromeTtsSpeaking = false;
+          __anprCurrentAudio = null;
+          // Fallback to browser TTS
+          _anprSpeakChunkBrowser(text, null, lang);
+        });
+      } catch (e) {
+        __anprChromeTtsSpeaking = false;
+        __anprCurrentAudio = null;
+        _anprSpeakChunkBrowser(text, null, lang);
+      }
+    });
+  } catch (e) {
+    __anprChromeTtsSpeaking = false;
+    __anprConsecutiveSpeakErrors++;
+    __anprSpeechState.idx++;
+    setTimeout(anprSpeakNext, 0);
+  }
+}
+
+// ---------- Browser chrome.tts playback (free) ----------
+
+function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
   const voiceName = forceVoice ? (forceVoice.name || forceVoice.voiceName || null) : null;
   const tuned = __anprTuneProsody(s, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
 

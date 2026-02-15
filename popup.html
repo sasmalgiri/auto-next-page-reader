@@ -90,6 +90,39 @@
 
     <section class="tts-controls" style="margin-top:8px;">
       <div class="control-row">
+        <label for="voiceEngine" style="font-size:11px;">Voice Engine</label>
+        <select id="voiceEngine" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
+          <option value="browser">Browser TTS (Free)</option>
+          <option value="cloud">Google Cloud Neural (Premium)</option>
+        </select>
+      </div>
+      <div id="cloudVoiceControls" style="display:none;">
+        <div class="control-row">
+          <label for="cloudVoice" style="font-size:11px;">Cloud Voice</label>
+          <select id="cloudVoice" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
+            <option value="hi-IN-Neural2-B">Male Neural2-B (Best)</option>
+            <option value="hi-IN-Neural2-C">Male Neural2-C</option>
+            <option value="hi-IN-Neural2-A">Female Neural2-A</option>
+            <option value="hi-IN-Neural2-D">Female Neural2-D</option>
+            <option value="hi-IN-Wavenet-B">Male Wavenet-B</option>
+            <option value="hi-IN-Wavenet-C">Male Wavenet-C</option>
+            <option value="hi-IN-Wavenet-A">Female Wavenet-A</option>
+            <option value="hi-IN-Wavenet-D">Female Wavenet-D</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label for="cloudTtsApiKey" style="font-size:11px;">Google Cloud API Key</label>
+          <input id="cloudTtsApiKey" type="password" placeholder="Paste your Google Cloud TTS API key" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;" />
+        </div>
+        <div class="control-row" style="display:flex;gap:6px;">
+          <button id="previewCloudVoice" class="control-btn toggle" style="font-size:11px;flex:1;">Preview Cloud Voice</button>
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style="font-size:10px;color:#4fc3f7;align-self:center;">Get API Key</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="tts-controls" style="margin-top:8px;">
+      <div class="control-row">
         <label for="geminiApiKey" style="font-size:11px;">Gemini API Key <span style="opacity:0.6">(optional, for better translation)</span></label>
         <input id="geminiApiKey" type="password" placeholder="Paste Gemini API key here" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;" />
       </div>

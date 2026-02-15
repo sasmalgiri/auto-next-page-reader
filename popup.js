@@ -32,6 +32,9 @@ let instantStartEnabled = false; // New flag for instant start on popup open
 let translateEnabled = true; // Hindi-only: always on
 let hindiVoiceGender = 'male'; // Hindi-only: male voice
 let premiumActive = true;
+let cloudTtsEnabled = false; // Google Cloud TTS (premium)
+let cloudTtsApiKey = '';
+let cloudTtsVoice = 'hi-IN-Neural2-B';
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
@@ -83,6 +86,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.storage.local.get(['geminiApiKey'], (gd) => {
     const keyEl = document.getElementById('geminiApiKey');
     if (keyEl && gd.geminiApiKey) keyEl.value = gd.geminiApiKey;
+  });
+
+  // Load Google Cloud TTS settings
+  chrome.storage.local.get(['cloudTtsEnabled', 'cloudTtsApiKey', 'cloudTtsVoice'], (cd) => {
+    cloudTtsEnabled = typeof cd.cloudTtsEnabled === 'boolean' ? cd.cloudTtsEnabled : false;
+    cloudTtsApiKey = typeof cd.cloudTtsApiKey === 'string' ? cd.cloudTtsApiKey : '';
+    cloudTtsVoice = typeof cd.cloudTtsVoice === 'string' && cd.cloudTtsVoice ? cd.cloudTtsVoice : 'hi-IN-Neural2-B';
+    _updateCloudTtsUI();
   });
 
     // Update UI based on the stored state
@@ -807,6 +818,77 @@ document.getElementById('geminiApiKey')?.addEventListener('change', (e) => {
   // Also push to content script immediately
   try { sendMessageToTab('setGeminiApiKey', { geminiApiKey: key }); } catch {}
   updateStatus(key ? 'Gemini API key saved. Will use Gemini for translation.' : 'Gemini key cleared. Using Google Translate (free).');
+});
+
+// ---------- Google Cloud TTS Controls ----------
+
+function _updateCloudTtsUI() {
+  const engineEl = document.getElementById('voiceEngine');
+  const controlsEl = document.getElementById('cloudVoiceControls');
+  const voiceEl = document.getElementById('cloudVoice');
+  const keyEl = document.getElementById('cloudTtsApiKey');
+  if (engineEl) engineEl.value = cloudTtsEnabled ? 'cloud' : 'browser';
+  if (controlsEl) controlsEl.style.display = cloudTtsEnabled ? 'block' : 'none';
+  if (voiceEl) voiceEl.value = cloudTtsVoice;
+  if (keyEl && cloudTtsApiKey) keyEl.value = cloudTtsApiKey;
+}
+
+document.getElementById('voiceEngine')?.addEventListener('change', async (e) => {
+  const isCloud = e.target.value === 'cloud';
+  cloudTtsEnabled = isCloud;
+  chrome.storage.local.set({ cloudTtsEnabled });
+  _updateCloudTtsUI();
+  // Push to content script
+  try {
+    await sendMessageToTab('setCloudTts', {
+      enabled: cloudTtsEnabled,
+      apiKey: cloudTtsApiKey,
+      voice: cloudTtsVoice
+    });
+  } catch (err) { console.debug('setCloudTts failed:', err); }
+  updateStatus(isCloud ? 'Google Cloud Neural voice enabled (premium).' : 'Browser TTS (free) selected.');
+});
+
+document.getElementById('cloudVoice')?.addEventListener('change', async (e) => {
+  cloudTtsVoice = e.target.value || 'hi-IN-Neural2-B';
+  chrome.storage.local.set({ cloudTtsVoice });
+  try {
+    await sendMessageToTab('setCloudTts', {
+      enabled: cloudTtsEnabled,
+      apiKey: cloudTtsApiKey,
+      voice: cloudTtsVoice
+    });
+  } catch {}
+});
+
+document.getElementById('cloudTtsApiKey')?.addEventListener('change', async (e) => {
+  cloudTtsApiKey = (e.target.value || '').trim();
+  chrome.storage.local.set({ cloudTtsApiKey });
+  try {
+    await sendMessageToTab('setCloudTts', {
+      enabled: cloudTtsEnabled,
+      apiKey: cloudTtsApiKey,
+      voice: cloudTtsVoice
+    });
+  } catch {}
+  updateStatus(cloudTtsApiKey ? 'Cloud TTS API key saved.' : 'Cloud TTS key cleared.');
+});
+
+document.getElementById('previewCloudVoice')?.addEventListener('click', async () => {
+  if (!cloudTtsApiKey) {
+    updateStatus('Enter a Google Cloud API key first.');
+    return;
+  }
+  try {
+    await sendMessageToTab('previewCloudVoice', {
+      apiKey: cloudTtsApiKey,
+      voice: cloudTtsVoice
+    });
+    updateStatus('Playing Cloud Neural voice preview...');
+  } catch (e) {
+    console.debug('Cloud preview failed:', e);
+    updateStatus('Cloud voice preview failed. Check your API key.');
+  }
 });
 
 // Enable/disable buttons based on the current state

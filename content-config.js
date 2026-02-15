@@ -295,6 +295,12 @@ if (typeof __anprChromeTtsSpeaking === 'undefined') { var __anprChromeTtsSpeakin
 // Store current TTS event callbacks so anprTtsEvent messages can dispatch to them
 if (typeof __anprCurrentTtsCallbacks === 'undefined') { var __anprCurrentTtsCallbacks = null; }
 
+// Google Cloud TTS (premium neural voices)
+if (typeof __anprCloudTtsEnabled === 'undefined') { var __anprCloudTtsEnabled = false; }
+if (typeof __anprCloudTtsApiKey === 'undefined') { var __anprCloudTtsApiKey = null; }
+if (typeof __anprCloudTtsVoice === 'undefined') { var __anprCloudTtsVoice = 'hi-IN-Neural2-B'; } // Male Neural2 default
+if (typeof __anprCurrentAudio === 'undefined') { var __anprCurrentAudio = null; } // Reference to current Audio element for Cloud TTS
+
 // ---------- Low-level utility functions ----------
 
 function anprInstrumentedCancel(reason) {
@@ -311,6 +317,8 @@ function anprInstrumentedCancel(reason) {
   try { __anprReadingLock = true; } catch {}
   // Stop chrome.tts in background
   try { chrome.runtime.sendMessage({ type: 'anprTtsStop' }); } catch {}
+  // Stop Google Cloud TTS audio if playing
+  try { if (__anprCurrentAudio) { __anprCurrentAudio.pause(); __anprCurrentAudio.src = ''; __anprCurrentAudio = null; } } catch {}
   __anprChromeTtsSpeaking = false;
   __anprCurrentTtsCallbacks = null;
   setTimeout(() => { __anprReadingLock = false; }, 140);
@@ -390,6 +398,12 @@ if (!window.__AutoNextReaderInitialized) {
     chrome.storage?.sync?.get(['translateApiKey', 'premiumKey', 'premiumValidatedAt'], (sd) => {
       if (typeof sd.translateApiKey === 'string' && sd.translateApiKey) __anprTranslateApiKey = sd.translateApiKey;
       if (typeof sd.premiumKey === 'string' && sd.premiumKey && sd.premiumValidatedAt) __anprPremiumActive = true;
+    });
+    // Load Google Cloud TTS settings
+    chrome.storage?.local.get(['cloudTtsEnabled', 'cloudTtsApiKey', 'cloudTtsVoice'], (cd) => {
+      if (typeof cd.cloudTtsEnabled === 'boolean') __anprCloudTtsEnabled = cd.cloudTtsEnabled;
+      if (typeof cd.cloudTtsApiKey === 'string' && cd.cloudTtsApiKey) __anprCloudTtsApiKey = cd.cloudTtsApiKey;
+      if (typeof cd.cloudTtsVoice === 'string' && cd.cloudTtsVoice) __anprCloudTtsVoice = cd.cloudTtsVoice;
     });
     // Restore scroll position for infinite pages to resume where left off
     if (__ANPR_MODE__ === 'infinite') {

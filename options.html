@@ -50,6 +50,26 @@
 
   <hr style="margin:24px 0;border-color:#ddd;" />
 
+  <h2>Google Cloud Text-to-Speech (Premium Voices)</h2>
+  <p>Enable high-quality Neural2 Hindi voices. Requires a Google Cloud API key with <strong>Text-to-Speech API</strong> enabled.</p>
+  <p class="hint">
+    Steps: Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>
+    &rarr; Create a project &rarr; Enable "Cloud Text-to-Speech API"
+    &rarr; Create an API key under Credentials.
+    Free tier: 250K chars/month (Neural2).
+  </p>
+
+  <div class="row">
+    <label for="cloudTtsApiKey">Cloud TTS API Key</label>
+    <input id="cloudTtsApiKey" type="password" placeholder="Your Google Cloud TTS API key" />
+  </div>
+  <div class="actions">
+    <button id="saveCloudTtsKey">Save Cloud TTS Key</button>
+    <span id="cloudTtsKeyStatus" class="hint"></span>
+  </div>
+
+  <hr style="margin:24px 0;border-color:#ddd;" />
+
   <h2>Google Cloud Translation API (Optional)</h2>
   <p>For higher quality translations, enter your Google Cloud Translation API key. Without it, the free Google Translate endpoint will be used.</p>
 

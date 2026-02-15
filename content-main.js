@@ -448,6 +448,55 @@ if (!window.__AutoNextReaderMsgBound) {
           sendResponse && sendResponse({ ok: false });
           return true;
         }
+      } else if (message.action === 'setCloudTts') {
+        // Enable/disable Google Cloud TTS and set API key + voice
+        if (typeof message.enabled === 'boolean') __anprCloudTtsEnabled = message.enabled;
+        if (typeof message.apiKey === 'string') __anprCloudTtsApiKey = message.apiKey || null;
+        if (typeof message.voice === 'string' && message.voice) __anprCloudTtsVoice = message.voice;
+        try {
+          chrome.storage?.local.set({
+            cloudTtsEnabled: __anprCloudTtsEnabled,
+            cloudTtsApiKey: __anprCloudTtsApiKey || '',
+            cloudTtsVoice: __anprCloudTtsVoice
+          });
+        } catch {}
+        sendResponse && sendResponse({ ok: true, cloudTtsEnabled: __anprCloudTtsEnabled });
+      } else if (message.action === 'previewCloudVoice') {
+        try {
+          if (__anprSpeechState.reading || isReading || __anprChromeTtsSpeaking) {
+            sendResponse && sendResponse({ ok: false, reason: 'busy' });
+            return true;
+          }
+          const sample = '\u092F\u0939 \u0917\u0942\u0917\u0932 \u0915\u094D\u0932\u093E\u0909\u0921 \u0928\u094D\u092F\u0942\u0930\u0932 \u0935\u0949\u0907\u0938 \u0915\u093E \u0928\u092E\u0942\u0928\u093E \u0939\u0948\u0964 \u0915\u094D\u092F\u093E \u0906\u092A\u0915\u094B \u092F\u0939 \u0906\u0935\u093E\u091C\u093C \u092A\u0938\u0902\u0926 \u0906\u0908?';
+          const apiKey = message.apiKey || __anprCloudTtsApiKey;
+          const voice = message.voice || __anprCloudTtsVoice || 'hi-IN-Neural2-B';
+          if (!apiKey) {
+            sendResponse && sendResponse({ ok: false, reason: 'no_api_key' });
+            return true;
+          }
+          // Use Cloud TTS via background for preview
+          __anprChromeTtsSpeaking = true;
+          chrome.runtime.sendMessage({
+            type: 'anprCloudTtsSynthesize',
+            text: sample, lang: 'hi-IN', voiceName: voice,
+            apiKey: apiKey, rate: ttsRate || 0.9, pitch: 0
+          }, (resp) => {
+            __anprChromeTtsSpeaking = false;
+            if (resp && resp.ok && resp.audioContent) {
+              try {
+                const audio = new Audio('data:audio/mp3;base64,' + resp.audioContent);
+                __anprCurrentAudio = audio;
+                audio.onended = () => { __anprCurrentAudio = null; };
+                audio.play().catch(() => { __anprCurrentAudio = null; });
+              } catch {}
+            }
+          });
+          sendResponse && sendResponse({ ok: true });
+          return true;
+        } catch (e) {
+          sendResponse && sendResponse({ ok: false });
+          return true;
+        }
       }
     } catch (error) {
       console.error("Error while handling message:", error);
