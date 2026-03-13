@@ -389,6 +389,8 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
       } catch {}
     },
     onend: () => {
+      __anprOnEndReceived = true;
+      _anprStopSpeechPoll();
       __anprTTSIdle = true;
       __anprChromeTtsSpeaking = false;
       if (__anprReadingLock) { __anprReadingLock = false; return; }
@@ -399,6 +401,8 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
       setTimeout(anprSpeakNext, gap);
     },
     onerror: (e) => {
+      __anprOnEndReceived = true;
+      _anprStopSpeechPoll();
       __anprTTSIdle = true;
       __anprChromeTtsSpeaking = false;
       if (__anprReadingLock) { __anprReadingLock = false; return; }
@@ -423,6 +427,7 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
 
   // Send speech to background service worker via chrome.tts (no user gesture needed)
   __anprChromeTtsSpeaking = true;
+  __anprOnEndReceived = false;
   console.debug('[ANPR][TTS] sending to background', { idx: __anprSpeechState.idx, len: (s||'').length, voice: voiceName, lang: forceLang });
   try {
     chrome.runtime.sendMessage({
@@ -441,7 +446,10 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
         __anprConsecutiveSpeakErrors++;
         __anprSpeechState.idx++;
         setTimeout(anprSpeakNext, 200);
+        return;
       }
+      // Start polling chrome.tts.isSpeaking() as backup for lost onEnd events
+      _anprStartSpeechPoll();
     });
   } catch (e) {
     __anprChromeTtsSpeaking = false;
@@ -449,6 +457,55 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
     __anprSpeechState.idx++;
     setTimeout(anprSpeakNext, 0);
   }
+}
+
+// --- Speech completion polling (backup for lost onEnd events in Edge) ---
+var __anprSpeechPoll = null;
+var __anprOnEndReceived = false;
+
+function _anprStartSpeechPoll() {
+  _anprStopSpeechPoll();
+  let pollCount = 0;
+  __anprSpeechPoll = setInterval(() => {
+    pollCount++;
+    // Don't poll if onEnd already fired normally
+    if (__anprOnEndReceived) { _anprStopSpeechPoll(); return; }
+    // Ask background if chrome.tts is still speaking
+    try {
+      chrome.runtime.sendMessage({ type: 'anprTtsIsSpeaking' }, (resp) => {
+        if (chrome.runtime.lastError) {
+          // Background SW died — treat as speech ended
+          console.warn('[ANPR][Poll] Background unreachable, treating as speech ended.');
+          _anprStopSpeechPoll();
+          if (__anprChromeTtsSpeaking && !__anprOnEndReceived) {
+            _anprForceOnEnd();
+          }
+          return;
+        }
+        if (resp && !resp.speaking && __anprChromeTtsSpeaking && !__anprOnEndReceived) {
+          // chrome.tts says not speaking but we never got onEnd — fire it manually
+          console.log('[ANPR][Poll] chrome.tts not speaking, onEnd was lost. Forcing onEnd. pollCount:', pollCount);
+          _anprStopSpeechPoll();
+          _anprForceOnEnd();
+        }
+      });
+    } catch {
+      _anprStopSpeechPoll();
+      if (__anprChromeTtsSpeaking && !__anprOnEndReceived) _anprForceOnEnd();
+    }
+  }, 2000); // check every 2 seconds
+}
+
+function _anprStopSpeechPoll() {
+  if (__anprSpeechPoll) { clearInterval(__anprSpeechPoll); __anprSpeechPoll = null; }
+}
+
+function _anprForceOnEnd() {
+  console.log('[ANPR][Poll] Forcing onEnd for chunk', __anprSpeechState.idx);
+  const cb = __anprCurrentTtsCallbacks;
+  __anprChromeTtsSpeaking = false;
+  __anprOnEndReceived = true;
+  if (cb && cb.onend) cb.onend();
 }
 
 // ---------- Background keep-alive (prevents Edge service worker from sleeping) ----------
@@ -505,12 +562,12 @@ function anprStartFlowWatchdog() {
         const atEnd = __anprSpeechState.idx >= (__anprSpeechState.chunks?.length || 0);
         const engineBusy = __anprChromeTtsSpeaking;
 
-        // With chrome.tts: if engine is busy (onstart fired), let it finish.
-        // chrome.tts voices often don't fire word/boundary events, so we can't
-        // use boundary progress as a stuck signal. Give up to 60s per chunk.
-        if (engineBusy && __anprLastStartTs && (now - __anprLastStartTs) > 60000) {
-          console.warn('[ANPR][Watchdog] Chunk speaking for >60s, forcing next.');
-          anprInstrumentedCancel('watchdog-timeout-60s');
+        // With speech polling in place, reduce timeout. If engineBusy but poll
+        // hasn't detected end yet, give up to 30s before forcing next.
+        if (engineBusy && __anprLastStartTs && (now - __anprLastStartTs) > 30000) {
+          console.warn('[ANPR][Watchdog] Chunk speaking for >30s, forcing next.');
+          _anprStopSpeechPoll();
+          anprInstrumentedCancel('watchdog-timeout-30s');
           __anprSpeechState.idx++;
           setTimeout(anprSpeakNext, 100);
           return;

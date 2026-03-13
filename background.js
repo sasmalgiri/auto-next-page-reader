@@ -185,6 +185,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
       return true;
     }
+    // Poll: is chrome.tts currently speaking?
+    if (msg && msg.type === 'anprTtsIsSpeaking') {
+      try {
+        chrome.tts.isSpeaking((speaking) => {
+          sendResponse({ speaking: !!speaking });
+        });
+      } catch {
+        sendResponse({ speaking: false });
+      }
+      return true;
+    }
     if (msg && msg.type === 'anprTtsGetVoices') {
       chrome.tts.getVoices((voices) => { sendResponse({ voices: voices || [] }); });
       return true;
