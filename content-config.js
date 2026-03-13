@@ -317,6 +317,8 @@ function anprInstrumentedCancel(reason) {
   try { __anprReadingLock = true; } catch {}
   // Stop chrome.tts in background
   try { chrome.runtime.sendMessage({ type: 'anprTtsStop' }); } catch {}
+  // Stop window.speechSynthesis directly (Edge uses this path)
+  try { window.speechSynthesis.cancel(); } catch {}
   // Stop Google Cloud TTS audio if playing
   try { if (__anprCurrentAudio) { __anprCurrentAudio.pause(); __anprCurrentAudio.src = ''; __anprCurrentAudio = null; } } catch {}
   __anprChromeTtsSpeaking = false;

@@ -358,11 +358,16 @@ function _anprSpeakChunkCloud(text, lang) {
   }
 }
 
-// ---------- Browser chrome.tts playback (free) ----------
+// ---------- Browser TTS playback (free) ----------
+
+// Detect Edge: use window.speechSynthesis directly (avoids SW death).
+// Chrome: use chrome.tts via background (avoids Chrome's 15s pause bug).
+var __anprIsEdge = /Edg\//i.test(navigator.userAgent);
 
 function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
-  // For Hindi: don't pass speechSynthesis voiceName — it doesn't match chrome.tts names.
-  // Let background pick the right voice (Madhur/Swara) based on gender parameter.
+  if (__anprIsEdge) {
+    return _anprSpeakChunkEdgeDirect(s, forceVoice, forceLang);
+  }
   const isHindi = forceLang && forceLang.startsWith('hi');
   const voiceName = (!isHindi && forceVoice) ? (forceVoice.name || forceVoice.voiceName || null) : null;
   const tuned = __anprTuneProsody(s, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
@@ -461,7 +466,86 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
   }
 }
 
-// --- Speech completion polling (backup for lost onEnd events in Edge) ---
+// ---------- Edge: direct window.speechSynthesis (no service worker needed) ----------
+
+function _anprSpeakChunkEdgeDirect(s, forceVoice, forceLang) {
+  const tuned = __anprTuneProsody(s, (__anprSpeechState.rate || ttsRate || 0.8), (__anprSpeechState.pitch || ttsPitch || 1.0));
+  const utter = new SpeechSynthesisUtterance(s);
+  utter.rate = tuned.rate;
+  utter.pitch = tuned.pitch;
+  utter.volume = 1.0;
+  utter.lang = forceLang || 'en-US';
+
+  // Pick voice from window.speechSynthesis
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (forceVoice) {
+    const match = voices.find(v => v.name === forceVoice.name || v.voiceURI === forceVoice.voiceURI);
+    if (match) utter.voice = match;
+  }
+  if (!utter.voice && preferredVoiceURI) {
+    const match = voices.find(v => v.voiceURI === preferredVoiceURI || v.name === preferredVoiceURI);
+    if (match) utter.voice = match;
+  }
+
+  utter.onstart = () => {
+    try {
+      __anprTTSIdle = false; __anprConsecutiveSpeakErrors = 0; __anprSuccessfulUtterances++;
+      __anprLastUtteranceTs = Date.now();
+      __anprLastStartTs = __anprLastUtteranceTs;
+      console.debug('[ANPR][Edge] onstart', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length, voice: utter.voice?.name });
+    } catch {}
+  };
+
+  utter.onboundary = () => {
+    try {
+      __anprLastBoundaryTs = Date.now();
+      const ratio = (__anprSpeechState.idx + 1) / Math.max(1, __anprSpeechState.chunks.length);
+      const rect = __anprSpeechState.container && __anprSpeechState.container.getBoundingClientRect();
+      if (rect) {
+        const y = window.scrollY + rect.top + ratio * rect.height;
+        anprSmoothScrollTo(y);
+      }
+    } catch {}
+  };
+
+  utter.onend = () => {
+    __anprTTSIdle = true;
+    __anprChromeTtsSpeaking = false;
+    if (__anprReadingLock) { __anprReadingLock = false; return; }
+    __anprSpeechState.idx++;
+    __anprLastUtteranceTs = Date.now();
+    console.debug('[ANPR][Edge] onend', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length });
+    const gap = (__anprNaturalPreset || __anprDynamicProsody) ? (tuned.pauseAfterMs || 0) : 0;
+    setTimeout(anprSpeakNext, gap);
+  };
+
+  utter.onerror = (e) => {
+    __anprTTSIdle = true;
+    __anprChromeTtsSpeaking = false;
+    if (__anprReadingLock) { __anprReadingLock = false; return; }
+    __anprConsecutiveSpeakErrors++;
+    console.warn('[ANPR][Edge] onerror', e?.error || 'unknown');
+    __anprLastUtteranceTs = Date.now();
+    __anprSpeechState.idx++;
+    const backoff = (__anprConsecutiveSpeakErrors > 2) ? Math.min(1200, __anprErrorBackoffBase * Math.pow(1.6, __anprConsecutiveSpeakErrors - 2)) : 0;
+    setTimeout(anprSpeakNext, backoff);
+  };
+
+  __anprChromeTtsSpeaking = true;
+  console.debug('[ANPR][Edge] speaking directly', { idx: __anprSpeechState.idx, len: (s||'').length, voice: utter.voice?.name });
+  try {
+    window.speechSynthesis.cancel(); // clear any queued
+    window.speechSynthesis.speak(utter);
+  } catch (e) {
+    console.warn('[ANPR][Edge] speak() error:', e);
+    __anprChromeTtsSpeaking = false;
+    __anprConsecutiveSpeakErrors++;
+    __anprSpeechState.idx++;
+    setTimeout(anprSpeakNext, 0);
+  }
+}
+
+// --- Speech completion polling (backup for lost onEnd events in Chrome) ---
 var __anprSpeechPoll = null;
 var __anprOnEndReceived = false;
 var __anprSpeechStartedAt = 0;
