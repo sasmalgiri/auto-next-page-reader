@@ -5,21 +5,43 @@ const activeSessions = new Map(); // tabId -> { originPattern, mode }
 const SESSIONS_KEY = 'anpr:sessions:v1';
 
 // --- Keep-alive mechanism to prevent service worker from sleeping during TTS ---
+// Uses BOTH persistent port AND interval pings for maximum reliability in Edge.
 let _anprKeepAliveInterval = null;
 let _anprTtsSpeaking = false;
+const _anprActivePorts = new Set();
+
+// Persistent port connection — keeps service worker alive as long as port is open
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'anpr-keepalive') {
+    _anprActivePorts.add(port);
+    console.log('[ANPR BG] Keep-alive port connected. Active ports:', _anprActivePorts.size);
+    port.onDisconnect.addListener(() => {
+      _anprActivePorts.delete(port);
+      console.log('[ANPR BG] Keep-alive port disconnected. Active ports:', _anprActivePorts.size);
+    });
+    // Respond to pings to keep the port active
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'ping') {
+        try { port.postMessage({ type: 'pong' }); } catch {}
+      }
+    });
+  }
+});
 
 function _anprStartKeepAlive() {
   _anprTtsSpeaking = true;
   if (_anprKeepAliveInterval) return;
-  // Ping ourselves every 20s to prevent Edge from killing the service worker
   _anprKeepAliveInterval = setInterval(() => {
     if (!_anprTtsSpeaking) {
       clearInterval(_anprKeepAliveInterval);
       _anprKeepAliveInterval = null;
       return;
     }
-    // Touch chrome.storage to keep SW alive
     chrome.storage.local.get(['_keepAlive'], () => {});
+    // Also ping all active ports
+    for (const p of _anprActivePorts) {
+      try { p.postMessage({ type: 'heartbeat' }); } catch {}
+    }
   }, 20000);
 }
 

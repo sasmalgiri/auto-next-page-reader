@@ -88,7 +88,11 @@ function __anprPersistSettingsBeforeNav() {
 
 function maybeAutoNext() {
   const atEnd = __anprSpeechState.idx >= __anprSpeechState.chunks.length;
-  console.debug('[ANPR] maybeAutoNext called.', { atEnd, ttsIdle: __anprTTSIdle, advanceLock: __anprAdvanceLock });
+  console.log('[ANPR] maybeAutoNext called.', {
+    atEnd, ttsIdle: __anprTTSIdle, advanceLock: __anprAdvanceLock,
+    autoNextEnabled, successfulUtterances: __anprSuccessfulUtterances,
+    idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length
+  });
   if (!atEnd || !__anprTTSIdle) return;
 
   if (__anprSuccessfulUtterances < 1) {
@@ -97,7 +101,10 @@ function maybeAutoNext() {
     __anprAdvanceLock = false; __anprSpeechState.reading = false; return;
   }
 
-  if (__anprAdvanceLock) return;
+  if (__anprAdvanceLock) {
+    console.log('[ANPR] advanceLock is true, skipping navigation.');
+    return;
+  }
   __anprAdvanceLock = true;
   __anprSpeechState.reading = false;
 

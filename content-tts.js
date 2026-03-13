@@ -452,17 +452,44 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
 }
 
 // ---------- Background keep-alive (prevents Edge service worker from sleeping) ----------
+// Uses a persistent port connection — this is the MOST reliable way to keep SW alive.
 
-var __anprBgKeepAlive = null;
+var __anprBgKeepAlivePort = null;
+var __anprBgKeepAlivePing = null;
+
 function anprStartBgKeepAlive() {
-  if (__anprBgKeepAlive) return;
-  __anprBgKeepAlive = setInterval(() => {
-    if (!__anprSpeechState.reading) { anprStopBgKeepAlive(); return; }
-    try { chrome.runtime.sendMessage({ type: 'anprKeepAlive' }, () => {}); } catch {}
-  }, 15000); // ping every 15s
+  if (__anprBgKeepAlivePort) return;
+  try {
+    __anprBgKeepAlivePort = chrome.runtime.connect({ name: 'anpr-keepalive' });
+    __anprBgKeepAlivePort.onDisconnect.addListener(() => {
+      console.log('[ANPR] Keep-alive port disconnected, reconnecting...');
+      __anprBgKeepAlivePort = null;
+      // Auto-reconnect if still reading
+      if (__anprSpeechState.reading) {
+        setTimeout(anprStartBgKeepAlive, 500);
+      }
+    });
+    // Send periodic pings over the port to keep it active
+    __anprBgKeepAlivePing = setInterval(() => {
+      if (!__anprSpeechState.reading) { anprStopBgKeepAlive(); return; }
+      try {
+        if (__anprBgKeepAlivePort) {
+          __anprBgKeepAlivePort.postMessage({ type: 'ping' });
+        }
+      } catch { anprStopBgKeepAlive(); }
+    }, 10000); // ping every 10s
+    console.log('[ANPR] Keep-alive port connected.');
+  } catch (e) {
+    console.warn('[ANPR] Failed to open keep-alive port:', e);
+  }
 }
+
 function anprStopBgKeepAlive() {
-  if (__anprBgKeepAlive) { clearInterval(__anprBgKeepAlive); __anprBgKeepAlive = null; }
+  if (__anprBgKeepAlivePing) { clearInterval(__anprBgKeepAlivePing); __anprBgKeepAlivePing = null; }
+  if (__anprBgKeepAlivePort) {
+    try { __anprBgKeepAlivePort.disconnect(); } catch {}
+    __anprBgKeepAlivePort = null;
+  }
 }
 
 // ---------- Flow watchdog ----------
