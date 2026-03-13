@@ -42,7 +42,7 @@ function autoStartReadingOnNextChapter() {
       return;
     }
 
-    // Hindi-only: Do NOT auto-start without autostart_reader flag.
+    // Do NOT auto-start without autostart_reader flag.
     // First reading must come from user clicking "Start Reading" (user gesture required
     // for speech synthesis, and translation needs time before speaking).
     console.log('[ANPR] No autostart flag. Waiting for user to click Start Reading.');
@@ -111,7 +111,7 @@ try {
         console.error('[ANPR] SPA: Error reading sessionStorage:', e);
       }
       if (!shouldAutoStart) {
-        console.debug('[ANPR] SPA: No autostart flag. Hindi-only requires explicit start or auto-next.');
+        console.debug('[ANPR] SPA: No autostart flag. Requires explicit start or auto-next.');
         return;
       }
       if (shouldAutoStart) { try { sessionStorage.removeItem('autostart_reader'); } catch {} }
@@ -144,19 +144,13 @@ try {
     if (changes && 'preferNaturalVoices' in changes) {
       __anprPreferNatural = !!(changes.preferNaturalVoices?.newValue);
     }
-    if (changes && 'translateEnabled' in changes) {
-      __anprTranslateEnabled = !!(changes.translateEnabled?.newValue);
-    }
-    if (changes && 'hindiVoiceGender' in changes) {
-      __anprHindiVoiceGender = changes.hindiVoiceGender?.newValue || 'female';
-    }
     if (changes && 'premiumActive' in changes) {
       __anprPremiumActive = !!(changes.premiumActive?.newValue);
     }
   });
 } catch {}
 
-// Robust fallback auto-start scheduler — Hindi-only: only fires with autostart_reader flag
+// Robust fallback auto-start scheduler — only fires with autostart_reader flag
 // (i.e. after auto-next navigation). First reading requires user gesture (Start Reading button).
 try {
   (function autoStartFallbackLoop() {
@@ -264,18 +258,6 @@ if (!window.__ANPR_TtsEventBound) {
         case 'sentence':
           if (cb.onboundary) cb.onboundary();
           break;
-      }
-    }
-    // Voice selection info from background
-    if (message && message.type === 'anprVoiceInfo') {
-      console.log('[ANPR] Voice selected by background:', message.voiceName, 'Madhur available:', message.madhurAvailable);
-      if (!message.madhurAvailable && __anprTranslateEnabled) {
-        const voiceName = message.voiceName || 'default';
-        const isMadhur = voiceName.toLowerCase().includes('madhur');
-        if (!isMadhur) {
-          console.warn('[ANPR] Madhur voice NOT available! Using:', voiceName, '— Switch to Microsoft Edge for Madhur voice, or use Cloud TTS.');
-          updateStatus('Using: ' + voiceName + ' (Madhur needs Edge browser or Cloud TTS)');
-        }
       }
     }
   });
@@ -426,39 +408,8 @@ if (!window.__AutoNextReaderMsgBound) {
           sendResponse && sendResponse({ ok:true });
         } else { sendResponse && sendResponse({ ok:false }); }
       } else if (message.action === 'toggleTranslate') {
-        __anprTranslateEnabled = !!message.translateEnabled;
-        try { chrome.storage?.local.set({ translateEnabled: __anprTranslateEnabled }); } catch {}
-        if (!__anprTranslateEnabled) { try { anprClearTranslateCache(); } catch {} }
-        sendResponse && sendResponse({ ok: true, translateEnabled: __anprTranslateEnabled });
-      } else if (message.action === 'setGeminiApiKey') {
-        if (typeof __anprGeminiApiKey !== 'undefined') {
-          __anprGeminiApiKey = (message.geminiApiKey || '').trim() || null;
-        }
-        sendResponse && sendResponse({ ok: true });
-      } else if (message.action === 'setHindiVoiceGender') {
-        __anprHindiVoiceGender = message.hindiVoiceGender || 'female';
-        try { chrome.storage?.local.set({ hindiVoiceGender: __anprHindiVoiceGender }); } catch {}
-        try { if (typeof anprResetHindiVoiceCache === 'function') anprResetHindiVoiceCache(); } catch {}
-        sendResponse && sendResponse({ ok: true });
-      } else if (message.action === 'previewHindiVoice') {
-        try {
-          if (__anprSpeechState.reading || isReading || __anprChromeTtsSpeaking) {
-            sendResponse && sendResponse({ ok: false, reason: 'busy' });
-            return true;
-          }
-          const sample = '\u092F\u0939 \u090F\u0915 \u0939\u093F\u0902\u0926\u0940 \u0906\u0935\u093E\u091C\u093C \u0915\u093E \u0928\u092E\u0942\u0928\u093E \u0939\u0948\u0964';
-          const gender = message.hindiVoiceGender || __anprHindiVoiceGender || 'male';
-          chrome.runtime.sendMessage({
-            type: 'anprTtsSpeak', text: sample, lang: 'hi-IN',
-            rate: ttsRate || 0.9, pitch: ttsPitch || 1.0, volume: 1.0,
-            gender: gender
-          });
-          sendResponse && sendResponse({ ok: true });
-          return true;
-        } catch (e) {
-          sendResponse && sendResponse({ ok: false });
-          return true;
-        }
+        // Kept for compat — translation is disabled
+        sendResponse && sendResponse({ ok: true, translateEnabled: false });
       } else if (message.action === 'setCloudTts') {
         // Enable/disable Google Cloud TTS and set API key + voice
         if (typeof message.enabled === 'boolean') __anprCloudTtsEnabled = message.enabled;

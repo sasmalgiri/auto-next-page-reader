@@ -29,12 +29,13 @@ let naturalPreset = true;
 let dynamicProsody = true;
 let dialogueAlternate = false;
 let instantStartEnabled = false; // New flag for instant start on popup open
-let translateEnabled = true; // Hindi-only: always on
-let hindiVoiceGender = 'male'; // Hindi-only: male voice
+let translateEnabled = false; // English mode: translation off
+let hindiVoiceGender = 'male'; // unused but kept for compat
 let premiumActive = true;
 let cloudTtsEnabled = false; // Google Cloud TTS (premium)
 let cloudTtsApiKey = '';
-let cloudTtsVoice = 'hi-IN-Neural2-B';
+let cloudTtsVoice = 'en-US-Neural2-J';
+let selectedEnglishVoice = 'auto'; // English voice selection
 
 // Toggle auto-read feature
 document.getElementById('toggleAutoRead').addEventListener('click', async () => {
@@ -74,13 +75,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   dynamicProsody = typeof data.dynamicProsody === 'boolean' ? data.dynamicProsody : true;
   dialogueAlternate = typeof data.dialogueAlternate === 'boolean' ? data.dialogueAlternate : false;
   instantStartEnabled = typeof data.instantStartEnabled === 'boolean' ? data.instantStartEnabled : false;
-  translateEnabled = typeof data.translateEnabled === 'boolean' ? data.translateEnabled : true;
-  hindiVoiceGender = typeof data.hindiVoiceGender === 'string' ? data.hindiVoiceGender : 'male';
+  translateEnabled = false; // Always English
+  hindiVoiceGender = 'male';
   premiumActive = true;
 
-  chrome.storage.local.set({ translateEnabled, hindiVoiceGender, premiumActive: true });
-  _updateTranslateUI();
-  _updateLanguageUI();
+  chrome.storage.local.set({ translateEnabled: false, premiumActive: true });
 
   // Load Gemini API key
   chrome.storage.local.get(['geminiApiKey'], (gd) => {
@@ -92,20 +91,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.storage.local.get(['cloudTtsEnabled', 'cloudTtsApiKey', 'cloudTtsVoice'], (cd) => {
     cloudTtsEnabled = typeof cd.cloudTtsEnabled === 'boolean' ? cd.cloudTtsEnabled : false;
     cloudTtsApiKey = typeof cd.cloudTtsApiKey === 'string' ? cd.cloudTtsApiKey : '';
-    cloudTtsVoice = typeof cd.cloudTtsVoice === 'string' && cd.cloudTtsVoice ? cd.cloudTtsVoice : 'hi-IN-Neural2-B';
+    cloudTtsVoice = typeof cd.cloudTtsVoice === 'string' && cd.cloudTtsVoice ? cd.cloudTtsVoice : 'en-US-Neural2-J';
     _updateCloudTtsUI();
   });
 
     // Update UI based on the stored state
     if (isSpeaking) {
-      const lang = translateEnabled ? 'Hindi' : 'English';
-      const voice = translateEnabled ? ` (${hindiVoiceGender} voice)` : '';
-      updateStatus(`Reading in ${lang}${voice}...`);
+      updateStatus('Reading...');
       toggleControls('start');
     } else {
-      const lang = translateEnabled ? 'Hindi' : 'English';
-      const voice = translateEnabled ? ` ${hindiVoiceGender} voice` : '';
-      updateStatus(`Ready — ${lang}${voice}`);
+      updateStatus('Ready — English');
       toggleControls('stop');
     }
     document.getElementById('toggle').innerText = autoNextEnabled ? "Auto Next ON" : "Auto Next OFF";
@@ -139,13 +134,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dialogueEl) dialogueEl.checked = !!dialogueAlternate;
     if (instantEl) instantEl.checked = !!instantStartEnabled;
 
-    // Translation UI init
-    const translateBtn = document.getElementById('toggleTranslate');
-    const hindiGenderEl = document.getElementById('hindiVoiceGender');
-    if (translateBtn) translateBtn.textContent = translateEnabled ? 'Hindi Translation ON' : 'Hindi Translation OFF';
-    if (hindiGenderEl) hindiGenderEl.value = hindiVoiceGender;
-    const translateCtrl = document.getElementById('translateControls');
-    if (translateCtrl) translateCtrl.style.display = translateEnabled ? 'block' : 'none';
+    // Load saved English voice preference
+    chrome.storage.local.get(['selectedEnglishVoice'], (evd) => {
+      selectedEnglishVoice = evd.selectedEnglishVoice || 'auto';
+    });
   });
 
   // Prime on-demand scripts in the active tab so overlay/hotkeys work immediately after opening the popup.
@@ -157,6 +149,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       // Load voices from the page context and initialize selectors
       await loadAndPopulateVoices();
+      // Populate English voice picker
+      _populateEnglishVoices();
       // Attempt instant start (fast provisional reading) after voices are loaded
       if (!isSpeaking && instantStartEnabled && autoReadEnabled) {
         try {
@@ -780,68 +774,118 @@ document.getElementById('autoLang').addEventListener('change', (e) => {
   chrome.storage.local.set({ ttsAutoLang });
 });
 
-// ---------- Translation controls ----------
+// ---------- English Voice Picker ----------
 
-function _updateTranslateUI() {
-  const btn = document.getElementById('toggleTranslate');
-  const ctrl = document.getElementById('translateControls');
-  const notice = document.getElementById('premiumNotice');
-  if (btn) btn.textContent = translateEnabled ? 'Hindi Translation ON' : 'Hindi Translation OFF';
-  if (ctrl) ctrl.style.display = translateEnabled ? 'block' : 'none';
-  if (notice) notice.style.display = 'none';
+function _populateEnglishVoices() {
+  const selectEl = document.getElementById('englishVoice');
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+
+  // Auto option
+  const autoOpt = document.createElement('option');
+  autoOpt.value = 'auto';
+  autoOpt.textContent = 'Auto (Best Available)';
+  selectEl.appendChild(autoOpt);
+
+  // Filter English voices and sort by quality
+  const enVoices = (voiceListCache || []).filter(v => {
+    const lang = (v.lang || '').toLowerCase();
+    return lang.startsWith('en');
+  });
+
+  // Score and sort: natural/neural first, online preferred, then by name
+  enVoices.sort((a, b) => {
+    const aScore = _englishVoiceScore(a);
+    const bScore = _englishVoiceScore(b);
+    if (aScore !== bScore) return bScore - aScore;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Group: Best voices first, then others
+  const best = enVoices.filter(v => _englishVoiceScore(v) >= 10);
+  const rest = enVoices.filter(v => _englishVoiceScore(v) < 10);
+
+  if (best.length) {
+    const og = document.createElement('optgroup');
+    og.label = 'Best Voices';
+    for (const v of best) {
+      const opt = document.createElement('option');
+      opt.value = v.voiceURI;
+      opt.textContent = `${v.name} — ${v.lang}${v.localService ? '' : ' (online)'}`;
+      if (selectedEnglishVoice === v.voiceURI) opt.selected = true;
+      og.appendChild(opt);
+    }
+    selectEl.appendChild(og);
+  }
+  if (rest.length) {
+    const og = document.createElement('optgroup');
+    og.label = 'Other Voices';
+    for (const v of rest) {
+      const opt = document.createElement('option');
+      opt.value = v.voiceURI;
+      opt.textContent = `${v.name} — ${v.lang}${v.localService ? '' : ' (online)'}`;
+      if (selectedEnglishVoice === v.voiceURI) opt.selected = true;
+      og.appendChild(opt);
+    }
+    selectEl.appendChild(og);
+  }
+
+  if (selectedEnglishVoice === 'auto') selectEl.value = 'auto';
 }
 
-function _updateLanguageUI() {
-  const langEl = document.getElementById('readingLanguage');
-  const hindiRow = document.getElementById('hindiVoiceRow');
-  const genderEl = document.getElementById('hindiVoiceGender');
-  if (langEl) langEl.value = translateEnabled ? 'hindi' : 'english';
-  if (hindiRow) hindiRow.style.display = translateEnabled ? '' : 'none';
-  if (genderEl) genderEl.value = hindiVoiceGender;
+function _englishVoiceScore(v) {
+  let score = 0;
+  const name = (v.name || '').toLowerCase();
+  // Natural/Neural voices are best
+  if (/natural|neural|premium/i.test(name)) score += 20;
+  // Online voices tend to be higher quality
+  if (!v.localService) score += 5;
+  // Prefer en-US
+  if ((v.lang || '').toLowerCase().startsWith('en-us')) score += 3;
+  // Known high-quality names (Edge/Chrome)
+  if (/\b(aria|jenny|guy|davis|andrew|ava|brian|emma|ryan)\b/i.test(name)) score += 10;
+  if (/\b(microsoft|google)\b/i.test(name)) score += 2;
+  return score;
 }
 
-// Reading Language selector
-document.getElementById('readingLanguage')?.addEventListener('change', async (e) => {
-  const isHindi = e.target.value === 'hindi';
-  translateEnabled = isHindi;
-  chrome.storage.local.set({ translateEnabled });
-  _updateLanguageUI();
-  _updateTranslateUI();
-  try { await sendMessageToTab('toggleTranslate', { translateEnabled }); } catch (e2) { console.debug('toggleTranslate send failed:', e2); }
-  const lang = isHindi ? 'Hindi' : 'English';
-  const voice = isHindi ? ` (${hindiVoiceGender} voice)` : '';
-  updateStatus(`Reading language: ${lang}${voice}`);
+// English voice change handler
+document.getElementById('englishVoice')?.addEventListener('change', async (e) => {
+  selectedEnglishVoice = e.target.value || 'auto';
+  chrome.storage.local.set({ selectedEnglishVoice });
+  // Also set as the preferred voice for TTS
+  const voiceURI = selectedEnglishVoice === 'auto' ? null : selectedEnglishVoice;
+  selectedVoiceURI = voiceURI;
+  chrome.storage.local.set({ voiceURI: voiceURI });
+  try { await sendMessageToTab('setPreferredVoice', { voiceURI }); } catch {}
+  const voiceName = selectedEnglishVoice === 'auto' ? 'Auto' : e.target.options[e.target.selectedIndex]?.textContent || selectedEnglishVoice;
+  updateStatus('Voice: ' + voiceName);
 });
 
-// Hindi Voice Gender selector
-document.getElementById('hindiVoiceGender')?.addEventListener('change', async (e) => {
-  hindiVoiceGender = e.target.value || 'male';
-  chrome.storage.local.set({ hindiVoiceGender });
-  try { await sendMessageToTab('setHindiVoiceGender', { hindiVoiceGender }); } catch (e2) { console.debug('setHindiVoiceGender failed:', e2); }
-  updateStatus(`Hindi voice: ${hindiVoiceGender}`);
-});
-
-document.getElementById('toggleTranslate')?.addEventListener('click', async () => {
-  translateEnabled = !translateEnabled;
-  chrome.storage.local.set({ translateEnabled });
-  try { await sendMessageToTab('toggleTranslate', { translateEnabled }); } catch (e) { console.debug('toggleTranslate send failed:', e); }
-  _updateTranslateUI();
-  updateStatus(translateEnabled ? 'Hindi translation enabled.' : 'Hindi translation disabled.');
-});
-
-document.getElementById('hindiVoiceGender')?.addEventListener('change', async (e) => {
-  hindiVoiceGender = e.target.value || 'female';
-  chrome.storage.local.set({ hindiVoiceGender });
-  try { await sendMessageToTab('setHindiVoiceGender', { hindiVoiceGender }); } catch (e2) { console.debug('setHindiVoiceGender failed:', e2); }
-});
-
-document.getElementById('previewHindi')?.addEventListener('click', async () => {
+// Preview voice button
+document.getElementById('previewVoiceBtn')?.addEventListener('click', async () => {
   try {
-    await sendMessageToTab('previewHindiVoice', { hindiVoiceGender });
-    updateStatus('Playing Hindi voice preview...');
+    const voiceURI = selectedEnglishVoice === 'auto' ? (await pickVoiceForStart()) : selectedEnglishVoice;
+    if (!voiceURI) { updateStatus('No voice selected.'); return; }
+    await sendMessageToTab('previewVoice', { voiceURI, rate: ttsRate, pitch: ttsPitch });
+    updateStatus('Previewing voice...');
   } catch (e) {
-    console.debug('Hindi preview failed:', e);
-    updateStatus('Hindi preview failed. Make sure Hindi voices are installed.');
+    console.debug('Preview failed:', e?.message || e);
+    updateStatus('Preview failed. Open a webpage first.');
+  }
+});
+
+// Refresh voices button
+document.getElementById('refreshVoices')?.addEventListener('click', async () => {
+  updateStatus('Refreshing voices...');
+  // Clear cache to force fresh fetch
+  chrome.storage.local.remove(['cachedVoices', 'cachedVoicesTs']);
+  voiceListCache = [];
+  try {
+    await loadAndPopulateVoices();
+    _populateEnglishVoices();
+    updateStatus('Voices refreshed: ' + voiceListCache.length + ' found.');
+  } catch (e) {
+    updateStatus('Failed to refresh voices.');
   }
 });
 
@@ -884,7 +928,7 @@ document.getElementById('voiceEngine')?.addEventListener('change', async (e) => 
 });
 
 document.getElementById('cloudVoice')?.addEventListener('change', async (e) => {
-  cloudTtsVoice = e.target.value || 'hi-IN-Neural2-B';
+  cloudTtsVoice = e.target.value || 'en-US-Neural2-J';
   chrome.storage.local.set({ cloudTtsVoice });
   try {
     await sendMessageToTab('setCloudTts', {

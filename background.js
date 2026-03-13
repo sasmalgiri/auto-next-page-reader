@@ -46,7 +46,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (typeof tabId !== 'number') { sendResponse({ ok: false }); return true; }
       try { chrome.tts.stop(); } catch {}
       const opts = {
-        lang: msg.lang || 'hi-IN',
+        lang: msg.lang || 'en-US',
         rate: typeof msg.rate === 'number' ? msg.rate : 0.8,
         pitch: typeof msg.pitch === 'number' ? msg.pitch : 1.0,
         volume: typeof msg.volume === 'number' ? msg.volume : 1.0,
@@ -62,9 +62,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } catch {}
         }
       };
-      // For Hindi: ALWAYS let background pick the voice — ignore any voiceName from content script
-      const isHindiLang = (opts.lang || '').toLowerCase().startsWith('hi');
-      if (!isHindiLang && msg.voiceName) opts.voiceName = msg.voiceName;
+      // Use voice from content script if provided, otherwise auto-pick best English voice
+      if (msg.voiceName) {
+        opts.voiceName = msg.voiceName;
+      }
 
       const doSpeak = (finalOpts) => {
         console.log('[ANPR BG] doSpeak called with voiceName:', finalOpts.voiceName, 'lang:', finalOpts.lang);
@@ -84,65 +85,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } catch (e) { sendResponse({ ok: false, error: String(e) }); }
       };
 
-      if (isHindiLang) {
-        // ALWAYS select Hindi voice for Hindi content — search ALL voices for Madhur/Swara
-        const gender = msg.gender || 'male';
+      // If no voice specified, auto-pick best English voice
+      if (!opts.voiceName) {
         chrome.tts.getVoices((voices) => {
           const allVoices = voices || [];
           console.log('[ANPR BG] === ALL AVAILABLE VOICES (' + allVoices.length + ') ===');
-          allVoices.forEach((v, i) => {
-            console.log(`[ANPR BG] Voice[${i}]: name="${v.voiceName}" lang="${v.lang}" remote=${v.remote}`);
-          });
 
-          // Step 1: Search ALL voices for "madhur" or "swara" by name (regardless of lang)
-          const preferredName = gender === 'male' ? 'madhur' : 'swara';
-          const exactMatch = allVoices.find(v => (v.voiceName || '').toLowerCase().includes(preferredName));
-          if (exactMatch) {
-            opts.voiceName = exactMatch.voiceName;
-            console.log('[ANPR BG] Found preferred voice by name:', opts.voiceName);
-            _notifyVoiceSelected(tabId, opts.voiceName, true);
-            doSpeak(opts);
-            return;
-          }
-
-          // Step 2: Search Hindi-filtered voices with gender scoring
-          const hindiVoices = allVoices.filter(v => {
+          // Filter English voices
+          const enVoices = allVoices.filter(v => {
             const lang = (v.lang || '').toLowerCase().replace('_', '-');
-            return lang.startsWith('hi') || lang === 'hi-in';
+            return lang.startsWith('en');
           });
-          console.log('[ANPR BG] Hindi voices found:', hindiVoices.length, hindiVoices.map(v => v.voiceName));
+          console.log('[ANPR BG] English voices found:', enVoices.length);
 
-          if (hindiVoices.length > 0) {
-            const scored = hindiVoices.map(v => {
+          if (enVoices.length > 0) {
+            // Score voices by quality
+            const scored = enVoices.map(v => {
               let score = 0;
               const name = (v.voiceName || '').toLowerCase();
-              const isFemale = /swara|female|woman|neerja|sapna/i.test(name);
-              const isMale = /madhur|male|man|hemant|kalpesh/i.test(name);
-              if (gender === 'male') {
-                if (isMale) score += 15;
-                else if (isFemale) score -= 10;
-              } else {
-                if (isFemale) score += 15;
-                else if (isMale) score -= 10;
-              }
-              if (/natural|neural|premium/i.test(name)) score += 5;
+              if (/natural|neural|premium/i.test(name)) score += 20;
+              if (v.remote) score += 5;
+              if (/en-us/i.test(v.lang || '')) score += 3;
+              // Known high-quality voices
+              if (/\b(aria|jenny|guy|davis|andrew|ava|brian|emma|ryan)\b/i.test(name)) score += 10;
+              if (/\b(microsoft|google)\b/i.test(name)) score += 2;
               return { voice: v, score };
             });
             scored.sort((a, b) => b.score - a.score);
-            if (scored[0]) {
-              opts.voiceName = scored[0].voice.voiceName;
-              console.log('[ANPR BG] Hindi voice by scoring:', opts.voiceName, 'score:', scored[0].score);
-            }
-            // Check if Madhur was NOT found — notify user
-            const hasMadhur = allVoices.some(v => (v.voiceName || '').toLowerCase().includes('madhur'));
-            _notifyVoiceSelected(tabId, opts.voiceName, hasMadhur);
-            doSpeak(opts);
-            return;
+            opts.voiceName = scored[0].voice.voiceName;
+            console.log('[ANPR BG] Auto-picked English voice:', opts.voiceName, 'score:', scored[0].score);
           }
-
-          // Step 3: No Hindi voices at all — use whatever is available
-          console.warn('[ANPR BG] No Hindi voices found in chrome.tts!');
-          _notifyVoiceSelected(tabId, null, false);
           doSpeak(opts);
         });
       } else {
@@ -174,7 +146,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             signal: ac.signal,
             body: JSON.stringify({
               input: { text },
-              voice: { languageCode: lang || 'hi-IN', name: voiceName || 'hi-IN-Neural2-B' },
+              voice: { languageCode: lang || 'en-US', name: voiceName || 'en-US-Neural2-J' },
               audioConfig: {
                 audioEncoding: 'MP3',
                 speakingRate: typeof rate === 'number' ? rate : 1.0,
@@ -239,17 +211,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.warn('background.onMessage error:', e);
   }
 });
-
-// Notify content script which voice was selected (for UI feedback)
-function _notifyVoiceSelected(tabId, voiceName, madhurAvailable) {
-  try {
-    chrome.tabs.sendMessage(tabId, {
-      type: 'anprVoiceInfo',
-      voiceName: voiceName || 'default',
-      madhurAvailable: !!madhurAvailable
-    });
-  } catch {}
-}
 
 // Helper to check if a URL matches an origin pattern like https://example.com/*
 function urlMatchesOrigin(url, originPattern) {

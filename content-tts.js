@@ -230,47 +230,9 @@ function anprSpeakNext() {
 
   const idx = __anprSpeechState.idx;
   const s = __anprSpeechState.chunks[idx];
-  const hindiVoice = (__anprTranslateEnabled && __anprSpeechState._hindiVoice) ? __anprSpeechState._hindiVoice : null;
 
-  // --- Translate-and-read simultaneously ---
-  if (__anprTranslateEnabled && typeof anprTranslateChunk === 'function') {
-    // Check if we have a pre-translated version
-    const preTranslated = (typeof anprGetPreTranslated === 'function') ? anprGetPreTranslated(idx) : null;
-
-    if (preTranslated) {
-      // Already translated — speak immediately
-      console.debug('[ANPR][TTS] Using pre-translated chunk', idx);
-      _anprSpeakChunk(preTranslated, hindiVoice, 'hi-IN');
-      // Pre-translate the next chunk while this one speaks
-      if (typeof anprPreTranslateChunk === 'function') {
-        anprPreTranslateChunk(idx + 1, __anprSpeechState.chunks);
-        anprPreTranslateChunk(idx + 2, __anprSpeechState.chunks);
-      }
-    } else {
-      // Not pre-translated — translate now, then speak
-      updateStatus('Translating paragraph ' + (idx + 1) + '...');
-      anprTranslateChunk(s).then(translated => {
-        if (__anprSpeechState.cancel) return;
-        console.debug('[ANPR][TTS] Translated chunk', idx, ':', (translated || '').slice(0, 60));
-        updateStatus('Speaking paragraph ' + (idx + 1) + ' in Hindi...');
-        _anprSpeakChunk(translated || s, hindiVoice, 'hi-IN');
-        // Pre-translate upcoming chunks
-        if (typeof anprPreTranslateChunk === 'function') {
-          anprPreTranslateChunk(idx + 1, __anprSpeechState.chunks);
-          anprPreTranslateChunk(idx + 2, __anprSpeechState.chunks);
-        }
-      }).catch((err) => {
-        // Translation failed — speak in English
-        console.warn('[ANPR][TTS] Translation failed, falling back to English:', err);
-        updateStatus('Translation failed, reading English...');
-        _anprSpeakChunk(s, null, null);
-      });
-    }
-    return;
-  }
-
-  // No translation — speak English directly
-  _anprSpeakChunk(s, hindiVoice, hindiVoice ? 'hi-IN' : null);
+  // Speak English directly
+  _anprSpeakChunk(s, null, null);
 }
 
 function _anprSpeakChunk(s, forceVoice, forceLang) {
@@ -305,14 +267,14 @@ function _anprSpeakChunkCloud(text, lang) {
   const cloudPitch = Math.round((tuned.pitch - 1.0) * 20);
 
   __anprChromeTtsSpeaking = true;
-  console.debug('[ANPR][CloudTTS] synthesizing', { idx: __anprSpeechState.idx, len: text.length, voice: __anprCloudTtsVoice, lang: lang || 'hi-IN' });
+  console.debug('[ANPR][CloudTTS] synthesizing', { idx: __anprSpeechState.idx, len: text.length, voice: __anprCloudTtsVoice, lang: lang || 'en-US' });
 
   try {
     chrome.runtime.sendMessage({
       type: 'anprCloudTtsSynthesize',
       text: text,
-      lang: lang || 'hi-IN',
-      voiceName: __anprCloudTtsVoice || 'hi-IN-Neural2-B',
+      lang: lang || 'en-US',
+      voiceName: __anprCloudTtsVoice || 'en-US-Neural2-J',
       apiKey: __anprCloudTtsApiKey,
       rate: tuned.rate,
       pitch: cloudPitch
@@ -588,26 +550,7 @@ async function startChapterReader(opts = {}) {
     }
   }
 
-  // --- Hindi: Pick voice, clear pre-translation buffer ---
-  if (__anprTranslateEnabled) {
-    try {
-      if (typeof anprEnsureVoicesLoaded === 'function') await anprEnsureVoicesLoaded();
-      const hindiVoice = (typeof anprPickHindiVoice === 'function') ? anprPickHindiVoice(__anprHindiVoiceGender) : null;
-      __anprSpeechState._hindiVoice = hindiVoice;
-      if (hindiVoice) console.debug('[ANPR][Hindi] Voice ready:', hindiVoice.name);
-      if (typeof anprClearPreTranslated === 'function') anprClearPreTranslated();
-
-      // Pre-translate the first 2 chunks in background while primer speaks
-      if (typeof anprPreTranslateChunk === 'function') {
-        anprPreTranslateChunk(0, __anprSpeechState.chunks);
-        anprPreTranslateChunk(1, __anprSpeechState.chunks);
-      }
-    } catch (e) {
-      console.debug('[ANPR][Hindi] Voice/pre-translate setup:', e);
-    }
-  }
-
-  // Start the speak loop (each chunk translates inline before speaking)
+  // Start the speak loop
   anprSpeakNext();
 }
 

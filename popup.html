@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Auto Next Page Reader — Hindi</title>
+  <title>Auto Next Page Reader</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <h2>
       <i>📖</i>
-  Auto Next Page Reader — Hindi
+  Auto Next Page Reader
     </h2>
   </header>
 
@@ -45,29 +45,27 @@
       Auto Scroll OFF
     </button>
 
-    <!-- Language & Voice Controls -->
+    <!-- Voice Selection -->
     <section class="tts-controls" style="margin-top:4px;">
       <div class="control-row">
-        <label for="readingLanguage" style="font-size:11px;">Reading Language</label>
-        <select id="readingLanguage" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
-          <option value="hindi">Hindi (Translate & Read)</option>
-          <option value="english">English (Original)</option>
+        <label for="englishVoice" style="font-size:11px;">Voice</label>
+        <select id="englishVoice" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
+          <option value="auto">Auto (Best Available)</option>
         </select>
       </div>
-      <div class="control-row" id="hindiVoiceRow">
-        <label for="hindiVoiceGender" style="font-size:11px;">Hindi Voice Gender</label>
-        <select id="hindiVoiceGender" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
-          <option value="male">Male (Madhur)</option>
-          <option value="female">Female (Swara)</option>
-        </select>
+      <div class="control-row" style="display:flex;gap:6px;">
+        <button id="previewVoiceBtn" class="control-btn toggle" style="font-size:11px;flex:1;">Preview Voice</button>
+        <button id="refreshVoices" class="control-btn toggle" style="font-size:11px;flex:0 0 auto;">Refresh</button>
       </div>
     </section>
 
     <!-- Hidden elements needed by popup.js (kept so JS doesn't error) -->
-    <button id="toggleTranslate" style="display:none;">Hindi Translation ON</button>
+    <button id="toggleTranslate" style="display:none;"></button>
     <div id="translateControls" style="display:none;"></div>
     <div id="premiumNotice" style="display:none;"></div>
     <button id="previewHindi" style="display:none;"></button>
+    <select id="readingLanguage" style="display:none;"><option value="english" selected>English</option></select>
+    <select id="hindiVoiceGender" style="display:none;"><option value="male">Male</option></select>
 
     <section class="tts-controls">
       <div class="control-row">
@@ -117,14 +115,14 @@
         <div class="control-row">
           <label for="cloudVoice" style="font-size:11px;">Cloud Voice</label>
           <select id="cloudVoice" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;">
-            <option value="hi-IN-Neural2-B">Male Neural2-B (Best)</option>
-            <option value="hi-IN-Neural2-C">Male Neural2-C</option>
-            <option value="hi-IN-Neural2-A">Female Neural2-A</option>
-            <option value="hi-IN-Neural2-D">Female Neural2-D</option>
-            <option value="hi-IN-Wavenet-B">Male Wavenet-B</option>
-            <option value="hi-IN-Wavenet-C">Male Wavenet-C</option>
-            <option value="hi-IN-Wavenet-A">Female Wavenet-A</option>
-            <option value="hi-IN-Wavenet-D">Female Wavenet-D</option>
+            <option value="en-US-Neural2-J">Male Neural2-J (Best)</option>
+            <option value="en-US-Neural2-D">Male Neural2-D</option>
+            <option value="en-US-Neural2-A">Male Neural2-A</option>
+            <option value="en-US-Neural2-F">Female Neural2-F</option>
+            <option value="en-US-Neural2-C">Female Neural2-C</option>
+            <option value="en-US-Neural2-H">Female Neural2-H</option>
+            <option value="en-US-Wavenet-D">Male Wavenet-D</option>
+            <option value="en-US-Wavenet-F">Female Wavenet-F</option>
           </select>
         </div>
         <div class="control-row">
@@ -138,12 +136,7 @@
       </div>
     </section>
 
-    <section class="tts-controls" style="margin-top:8px;">
-      <div class="control-row">
-        <label for="geminiApiKey" style="font-size:11px;">Gemini API Key <span style="opacity:0.6">(optional, for better translation)</span></label>
-        <input id="geminiApiKey" type="password" placeholder="Paste Gemini API key here" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #555;border-radius:4px;background:#2a2a2a;color:#eee;" />
-      </div>
-    </section>
+    <input id="geminiApiKey" type="hidden" />
 
     <button id="settings" class="control-btn important">
       <i>⚙</i>
@@ -151,7 +144,7 @@
     </button>
 
     <div class="status-container">
-      <div id="status" class="status-message">Ready — Hindi male voice</div>
+      <div id="status" class="status-message">Ready — English</div>
     </div>
   </main>
 
