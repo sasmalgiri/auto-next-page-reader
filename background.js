@@ -4,6 +4,33 @@
 const activeSessions = new Map(); // tabId -> { originPattern, mode }
 const SESSIONS_KEY = 'anpr:sessions:v1';
 
+// --- Keep-alive mechanism to prevent service worker from sleeping during TTS ---
+let _anprKeepAliveInterval = null;
+let _anprTtsSpeaking = false;
+
+function _anprStartKeepAlive() {
+  _anprTtsSpeaking = true;
+  if (_anprKeepAliveInterval) return;
+  // Ping ourselves every 20s to prevent Edge from killing the service worker
+  _anprKeepAliveInterval = setInterval(() => {
+    if (!_anprTtsSpeaking) {
+      clearInterval(_anprKeepAliveInterval);
+      _anprKeepAliveInterval = null;
+      return;
+    }
+    // Touch chrome.storage to keep SW alive
+    chrome.storage.local.get(['_keepAlive'], () => {});
+  }, 20000);
+}
+
+function _anprStopKeepAlive() {
+  _anprTtsSpeaking = false;
+  if (_anprKeepAliveInterval) {
+    clearInterval(_anprKeepAliveInterval);
+    _anprKeepAliveInterval = null;
+  }
+}
+
 // Ordered list of content scripts to inject (dependencies first)
 const CONTENT_SCRIPTS = [
   'Readability.js',
@@ -53,6 +80,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         enqueue: false,
         onEvent: (event) => {
           try {
+            if (event.type === 'start') _anprStartKeepAlive();
+            if (event.type === 'end' || event.type === 'error' || event.type === 'cancelled') _anprStopKeepAlive();
             chrome.tabs.sendMessage(tabId, {
               type: 'anprTtsEvent',
               eventType: event.type,
@@ -124,6 +153,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg && msg.type === 'anprTtsStop') {
       try { chrome.tts.stop(); } catch {}
+      _anprStopKeepAlive();
+      sendResponse({ ok: true });
+      return true;
+    }
+    // Keep-alive ping from content script — just respond to prevent SW sleep
+    if (msg && msg.type === 'anprKeepAlive') {
+      _anprStartKeepAlive();
       sendResponse({ ok: true });
       return true;
     }

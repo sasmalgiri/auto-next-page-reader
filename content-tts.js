@@ -451,10 +451,25 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
   }
 }
 
+// ---------- Background keep-alive (prevents Edge service worker from sleeping) ----------
+
+var __anprBgKeepAlive = null;
+function anprStartBgKeepAlive() {
+  if (__anprBgKeepAlive) return;
+  __anprBgKeepAlive = setInterval(() => {
+    if (!__anprSpeechState.reading) { anprStopBgKeepAlive(); return; }
+    try { chrome.runtime.sendMessage({ type: 'anprKeepAlive' }, () => {}); } catch {}
+  }, 15000); // ping every 15s
+}
+function anprStopBgKeepAlive() {
+  if (__anprBgKeepAlive) { clearInterval(__anprBgKeepAlive); __anprBgKeepAlive = null; }
+}
+
 // ---------- Flow watchdog ----------
 
 function anprStartFlowWatchdog() {
   try {
+    anprStartBgKeepAlive(); // keep background alive while reading
     if (__anprFlowWatchdog) return;
     __anprFlowWatchdog = setInterval(() => {
       try {
@@ -493,7 +508,7 @@ function anprStartFlowWatchdog() {
     }, 900);
   } catch {}
 }
-function anprStopFlowWatchdog() { try { if (__anprFlowWatchdog) { clearInterval(__anprFlowWatchdog); __anprFlowWatchdog = null; } } catch {} }
+function anprStopFlowWatchdog() { try { if (__anprFlowWatchdog) { clearInterval(__anprFlowWatchdog); __anprFlowWatchdog = null; } anprStopBgKeepAlive(); } catch {} }
 
 // ---------- Chapter reader start/stop ----------
 
