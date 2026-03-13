@@ -374,7 +374,10 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
         __anprTTSIdle = false; __anprConsecutiveSpeakErrors = 0; __anprSuccessfulUtterances++;
         __anprLastUtteranceTs = Date.now();
         __anprLastStartTs = __anprLastUtteranceTs;
+        __anprSpeechStartedAt = Date.now();
         console.debug('[ANPR][TTS] onstart', { idx: __anprSpeechState.idx, total: __anprSpeechState.chunks.length, len: (s||'').length, voice: voiceName });
+        // NOW start polling — only after speech has actually started
+        _anprStartSpeechPoll();
       } catch {}
     },
     onboundary: () => {
@@ -448,8 +451,7 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
         setTimeout(anprSpeakNext, 200);
         return;
       }
-      // Start polling chrome.tts.isSpeaking() as backup for lost onEnd events
-      _anprStartSpeechPoll();
+      // Poll will start in onstart callback — NOT here, to avoid race condition
     });
   } catch (e) {
     __anprChromeTtsSpeaking = false;
@@ -462,38 +464,57 @@ function _anprSpeakChunkBrowser(s, forceVoice, forceLang) {
 // --- Speech completion polling (backup for lost onEnd events in Edge) ---
 var __anprSpeechPoll = null;
 var __anprOnEndReceived = false;
+var __anprSpeechStartedAt = 0;
 
 function _anprStartSpeechPoll() {
   _anprStopSpeechPoll();
   let pollCount = 0;
-  __anprSpeechPoll = setInterval(() => {
-    pollCount++;
-    // Don't poll if onEnd already fired normally
-    if (__anprOnEndReceived) { _anprStopSpeechPoll(); return; }
-    // Ask background if chrome.tts is still speaking
-    try {
-      chrome.runtime.sendMessage({ type: 'anprTtsIsSpeaking' }, (resp) => {
-        if (chrome.runtime.lastError) {
-          // Background SW died — treat as speech ended
-          console.warn('[ANPR][Poll] Background unreachable, treating as speech ended.');
-          _anprStopSpeechPoll();
-          if (__anprChromeTtsSpeaking && !__anprOnEndReceived) {
-            _anprForceOnEnd();
+  // Wait 3 seconds before first poll to let speech fully start
+  setTimeout(() => {
+    if (__anprOnEndReceived) return; // already ended normally
+    __anprSpeechPoll = setInterval(() => {
+      pollCount++;
+      // Don't poll if onEnd already fired normally
+      if (__anprOnEndReceived) { _anprStopSpeechPoll(); return; }
+      // Minimum speech time: don't force-end if speech started less than 3s ago
+      const elapsed = Date.now() - __anprSpeechStartedAt;
+      if (elapsed < 3000) return;
+      // Ask background if chrome.tts is still speaking
+      try {
+        chrome.runtime.sendMessage({ type: 'anprTtsIsSpeaking' }, (resp) => {
+          if (chrome.runtime.lastError) {
+            // Background SW died — but only force-end if speech had enough time
+            if (elapsed > 5000) {
+              console.warn('[ANPR][Poll] Background unreachable after', elapsed, 'ms. Treating as speech ended.');
+              _anprStopSpeechPoll();
+              if (__anprChromeTtsSpeaking && !__anprOnEndReceived) {
+                _anprForceOnEnd();
+              }
+            }
+            return;
           }
-          return;
-        }
-        if (resp && !resp.speaking && __anprChromeTtsSpeaking && !__anprOnEndReceived) {
-          // chrome.tts says not speaking but we never got onEnd — fire it manually
-          console.log('[ANPR][Poll] chrome.tts not speaking, onEnd was lost. Forcing onEnd. pollCount:', pollCount);
-          _anprStopSpeechPoll();
-          _anprForceOnEnd();
-        }
-      });
-    } catch {
-      _anprStopSpeechPoll();
-      if (__anprChromeTtsSpeaking && !__anprOnEndReceived) _anprForceOnEnd();
-    }
-  }, 2000); // check every 2 seconds
+          if (resp && !resp.speaking && __anprChromeTtsSpeaking && !__anprOnEndReceived) {
+            // Double-check: poll again in 1s to confirm it's really done (not just a gap)
+            setTimeout(() => {
+              if (__anprOnEndReceived) return;
+              chrome.runtime.sendMessage({ type: 'anprTtsIsSpeaking' }, (resp2) => {
+                if (chrome.runtime.lastError || (resp2 && !resp2.speaking)) {
+                  if (!__anprOnEndReceived) {
+                    console.log('[ANPR][Poll] Confirmed: chrome.tts not speaking. Forcing onEnd. pollCount:', pollCount, 'elapsed:', elapsed);
+                    _anprStopSpeechPoll();
+                    _anprForceOnEnd();
+                  }
+                }
+              });
+            }, 1000);
+          }
+        });
+      } catch {
+        _anprStopSpeechPoll();
+        if (__anprChromeTtsSpeaking && !__anprOnEndReceived && elapsed > 5000) _anprForceOnEnd();
+      }
+    }, 2000); // check every 2 seconds
+  }, 3000); // initial 3s delay before polling begins
 }
 
 function _anprStopSpeechPoll() {
